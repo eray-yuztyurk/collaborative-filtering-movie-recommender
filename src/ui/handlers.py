@@ -20,6 +20,7 @@ class AppState:
     df = None
     user_item_matrix = None
     reduced_df = None
+    user_ratings = {}  # {movie_id: rating} - User's movie ratings for profile
 
 state = AppState()
 
@@ -225,3 +226,144 @@ def get_system_info():
     info.append("\n" + "=" * 80)
     
     return "\n".join(info)
+
+# ============================================================================
+# NEW USER-BASED RECOMMENDATION FUNCTIONS
+# ============================================================================
+
+def add_movie_and_show_similar(movie_id, rating):
+    """Add movie to profile and show similar movies in component slots"""
+    if not movie_id or not rating:
+        outputs = ["⚠️ Please select a movie and rating", get_user_profile()]
+        # Add 5 hidden rows + empty info + 5 None IDs
+        for _ in range(5):
+            outputs.append(gr.Row(visible=False))
+            outputs.append("")
+        outputs.extend([None] * 5)
+        return outputs
+    
+    try:
+        movie_id = int(movie_id)
+        rating = float(rating)
+        
+        # Add to profile
+        state.user_ratings[movie_id] = rating
+        movie_name = find_item_name_using_id(state.reduced_df, item_id=movie_id)
+        
+        # Get similar movies (max 5)
+        selected_item = state.user_item_matrix.loc[:, movie_id]
+        correlated_items = state.user_item_matrix.corrwith(selected_item).sort_values(ascending=False)[1:6]
+        
+        status_msg = f"✅ Added: **{movie_name}** ({rating}⭐)"
+        profile = get_user_profile()
+        
+        outputs = [status_msg, profile]
+        
+        # Fill up to 5 movie slots
+        similar_list = list(correlated_items.items())
+        ids = []
+        
+        for i in range(5):
+            if i < len(similar_list):
+                rec_item_id, corr_rate = similar_list[i]
+                rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
+                similarity = f"{corr_rate*100:.1f}%"
+                
+                outputs.append(gr.Row(visible=True))  # Show row
+                outputs.append(f"{rec_item_name} (Similarity: {similarity})")  # Movie info
+                ids.append(int(rec_item_id))
+            else:
+                outputs.append(gr.Row(visible=False))  # Hide row
+                outputs.append("")  # Empty info
+                ids.append(None)
+        
+        # Add IDs as state values
+        outputs.extend(ids)
+        
+        return outputs
+        
+    except Exception as e:
+        outputs = [f"❌ Error: {str(e)}", get_user_profile()]
+        for _ in range(5):
+            outputs.append(gr.Row(visible=False))
+            outputs.append("")
+        outputs.extend([None] * 5)
+        return outputs
+
+def add_similar_movie(movie_id, rating):
+    """Add similar movie to profile with given rating"""
+    if movie_id is None or rating is None:
+        return get_user_profile()
+    
+    try:
+        state.user_ratings[int(movie_id)] = float(rating)
+        return get_user_profile()
+    except:
+        return get_user_profile()
+
+def clear_user_profile():
+    """Clear all user ratings and hide similar movies"""
+    state.user_ratings = {}
+    outputs = [get_user_profile(), ""]
+    # Hide all 5 movie rows
+    outputs.extend([gr.Row(visible=False)] * 5)
+    return outputs
+
+def get_user_profile():
+    """Get current user profile as DataFrame"""
+    if not state.user_ratings:
+        return pd.DataFrame({"Message": ["No ratings yet. Search and add movies!"]})
+    
+    ids = []
+    names = []
+    ratings = []
+    
+    for movie_id, rating in state.user_ratings.items():
+        ids.append(movie_id)
+        names.append(find_item_name_using_id(state.reduced_df, item_id=movie_id))
+        ratings.append(str(int(rating) * "⭐"))
+    
+    return pd.DataFrame({"ID": ids, "Movie": names, "Your Rating": ratings})
+
+def generate_personalized_recommendations(top_n=10):
+    """Generate recommendations based on user's ratings"""
+    if len(state.user_ratings) < 3:
+        return pd.DataFrame({"Message": [f"⚠️ Please rate at least 3 movies (currently {len(state.user_ratings)})"]})
+    
+    try:
+        # Create fake user row
+        import numpy as np
+        fake_user_id = -1  # Negative ID for fake user
+        
+        # Create new row with user ratings
+        user_row = pd.Series(index=state.user_item_matrix.columns, dtype=float)
+        for movie_id, rating in state.user_ratings.items():
+            if movie_id in user_row.index:
+                user_row[movie_id] = rating
+        
+        # Add to matrix temporarily
+        temp_matrix = pd.concat([state.user_item_matrix, pd.DataFrame([user_row], index=[fake_user_id])])
+        
+        # Use existing user_based_recommendation function
+        result_df = user_based_recommendation(temp_matrix, state.reduced_df, fake_user_id)
+        
+        if result_df.empty:
+            return pd.DataFrame({"Message": ["No recommendations found. Try rating more diverse movies."]})
+        
+        # Calculate weighted scores and get top recommendations
+        weighted_scores = result_df.mean(axis=1).sort_values(ascending=False).head(top_n)
+        
+        ids = []
+        names = []
+        scores = []
+        
+        for rec_item_id, score in weighted_scores.items():
+            rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
+            ids.append(rec_item_id)
+            names.append(rec_item_name)
+            scores.append(f"{score:.2f}")
+        
+        return pd.DataFrame({"ID": ids, "Recommended Movie": names, "Score": scores})
+        
+    except Exception as e:
+        return pd.DataFrame({"Error": [f"❌ {str(e)}. Try rating more movies."]})

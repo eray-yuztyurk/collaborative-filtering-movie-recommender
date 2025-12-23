@@ -7,14 +7,21 @@ from src.ui.handlers import (
     initialize_system,
     search_movies,
     get_item_based_recommendations,
-    get_user_based_recommendations,
-    get_system_info
+    get_system_info,
+    # New user-based functions
+    add_movie_and_show_similar,
+    add_similar_movie,
+    clear_user_profile,
+    generate_personalized_recommendations
 )
 
 def create_gradio_app():
     """Create Gradio interface"""
     
-    with gr.Blocks(title="Movie Recommender System", theme=gr.themes.Soft()) as app:
+    with gr.Blocks(title="Movie Recommender System", theme=gr.themes.Soft(), css="""
+        .movie-title-text { flex: 1 1 50% !important; min-width: 250px !important; }
+        .rating-btn { flex: 0 0 auto !important; min-width: 60px !important; max-width: 110px !important; }
+    """) as app:
         # Header
         gr.Markdown(
             """
@@ -68,30 +75,80 @@ def create_gradio_app():
             
             # User-Based Tab
             with gr.Tab("👤 User-Based Recommendations"):
-                gr.Markdown("Get recommendations based on similar users")
+                gr.Markdown("### Build your taste profile, get personalized recommendations")
+                
+                # Step 1: Search for favorite movie
+                gr.Markdown("<h3 style='margin-top: 20px;'>Step 1: Search and select your favorite movie</h3>")
+                with gr.Row():
+                    search_input_user = gr.Textbox(label="Movie Name", placeholder="e.g., Inception, Pulp Fiction", scale=3)
+                    search_btn_user = gr.Button("🔍 Search", variant="secondary", scale=1)
+                
+                search_results_user = gr.Radio(label="Search Results", choices=[], interactive=True)
                 
                 with gr.Row():
-                    user_input = gr.Textbox(
-                        label="User ID",
-                        placeholder="Enter user ID (e.g., 1, 100, 500)"
-                    )
-                    top_n_user = gr.Slider(
-                        minimum=5,
-                        maximum=20,
-                        value=10,
-                        step=1,
-                        label="Number of Recommendations"
-                    )
-                    user_rec_btn = gr.Button("Get Recommendations", variant="primary")
+                    rating_slider = gr.Slider(minimum=1, maximum=5, value=5, step=0.5, label="Your Rating ⭐")
+                    add_btn = gr.Button("➕ Add to Profile & Show Similar", variant="primary")
                 
-                user_rec_output = gr.Dataframe(label="Recommendations", interactive=False)
+                # Step 2: Similar movies with direct rating buttons
+                gr.Markdown("<h3 style='margin-top: 25px;'>Step 2: Rate similar movies (click a star to instantly add to profile)</h3>")
+                similar_status = gr.Markdown("")
                 
-                # Event handler
-                user_rec_btn.click(
-                    fn=get_user_based_recommendations,
-                    inputs=[user_input, top_n_user],
-                    outputs=user_rec_output
+                # Similar movie slots (5 movies)
+                similar_movies = []
+                for i in range(5):
+                    with gr.Row(visible=False, elem_classes="movie-rating-row") as movie_row:
+                        movie_info = gr.Textbox(label="", container=False, interactive=False, elem_classes="movie-title-text")
+                        btn1 = gr.Button("⭐", size="sm", elem_classes="rating-btn")
+                        btn2 = gr.Button("⭐⭐", size="sm", elem_classes="rating-btn")
+                        btn3 = gr.Button("⭐⭐⭐", size="sm", elem_classes="rating-btn")
+                        btn4 = gr.Button("⭐⭐⭐⭐", size="sm", elem_classes="rating-btn")
+                        btn5 = gr.Button("⭐⭐⭐⭐⭐", size="sm", elem_classes="rating-btn")
+                    similar_movies.append((movie_row, movie_info, btn1, btn2, btn3, btn4, btn5))
+                
+                # Step 3: Your profile
+                gr.Markdown("<h3 style='margin-top: 25px;'>Step 3: Your rated movies</h3>")
+                with gr.Row():
+                    profile_output = gr.Dataframe(label="Your Profile", interactive=False, scale=3)
+                    clear_btn = gr.Button("🗑️ Clear All", variant="secondary", scale=1)
+                
+                # Step 4: Get recommendations
+                gr.Markdown("<h3 style='margin-top: 25px;'>Step 4: Generate recommendations (need 3+ ratings)</h3>")
+                with gr.Row():
+                    top_n_personalized = gr.Slider(minimum=5, maximum=20, value=10, step=1, label="Number of Recommendations")
+                    rec_btn = gr.Button("✨ Get My Recommendations", variant="primary", size="lg")
+                
+                personalized_output = gr.Dataframe(label="Your Personalized Recommendations", interactive=False)
+                
+                # Hidden state to store similar movie IDs
+                similar_ids = [gr.State(None) for _ in range(5)]
+                
+                # Collect all outputs for similar movies display
+                similar_outputs = [similar_status, profile_output]
+                for row, info, _, _, _, _, _ in similar_movies:
+                    similar_outputs.append(row)
+                    similar_outputs.append(info)
+                for state_id in similar_ids:
+                    similar_outputs.append(state_id)
+                
+                # Event handlers
+                search_btn_user.click(fn=search_movies, inputs=search_input_user, outputs=search_results_user)
+                add_btn.click(
+                    fn=add_movie_and_show_similar, 
+                    inputs=[search_results_user, rating_slider], 
+                    outputs=similar_outputs
                 )
+                
+                # Connect rating buttons
+                for i, (row, info, btn1, btn2, btn3, btn4, btn5) in enumerate(similar_movies):
+                    for rating, btn in enumerate([btn1, btn2, btn3, btn4, btn5], 1):
+                        btn.click(
+                            fn=lambda id_val=similar_ids[i], r=rating: add_similar_movie(id_val, r),
+                            inputs=[similar_ids[i]],
+                            outputs=profile_output
+                        )
+                
+                clear_btn.click(fn=clear_user_profile, outputs=[profile_output, similar_status] + [row for row, *_ in similar_movies])
+                rec_btn.click(fn=generate_personalized_recommendations, inputs=top_n_personalized, outputs=personalized_output)
             
             # Stats & Info Tab
             with gr.Tab("📊 System Stats & Info"):
