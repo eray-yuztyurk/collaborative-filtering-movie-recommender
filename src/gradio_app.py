@@ -61,9 +61,9 @@ def initialize_system():
         try:
             print("📦 Loading from cache...")
             load_dumps()
-            return "✅ Ready! (loaded from cache)"
+            return gr.Button(value="✅ System Ready (from cache)", interactive=False)
         except Exception as e:
-            return f"❌ Error: {str(e)}"
+            return gr.Button(value=f"❌ Error: {str(e)}", interactive=True)
     
     try:
         print("⏳ Processing data...")
@@ -84,49 +84,55 @@ def initialize_system():
         save_dumps()
         
         print("✅ Done!")
-        return f"✅ Done! {user_item_matrix.shape[0]} users, {user_item_matrix.shape[1]} movies"
+        return gr.Button(value=f"✅ Ready! {user_item_matrix.shape[0]} users, {user_item_matrix.shape[1]} movies", interactive=False)
         
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return gr.Button(value=f"❌ Error: {str(e)}", interactive=True)
 
 def search_movies(keyword):
     """Search for movies by keyword or ID"""
     if df is None:
-        return pd.DataFrame({"Error": ["⚠️ Please initialize the system first!"]})
+        return gr.Radio(choices=[], label="⚠️ Please initialize the system first!")
     
     try:
         movie_id = int(keyword)
         movie_data = reduced_df[reduced_df["item_id"] == movie_id]
         if not movie_data.empty:
             movie_name = movie_data["item_name"].values[0]
-            return pd.DataFrame({"ID": [movie_id], "Movie Name": [movie_name]})
+            # Tuple format: (label, value) - sadece film ismi görünür
+            choices = [(movie_name, str(movie_id))]
+            return gr.Radio(choices=choices, label="Search Results", value=str(movie_id))
         else:
-            return pd.DataFrame({"Error": [f"Movie ID {movie_id} not found."]})
+            return gr.Radio(choices=[], label=f"Movie ID {movie_id} not found.")
     except ValueError:
         movies = search_item_names_with_keyword(reduced_df, item_col_name="item_name", 
                                                 searched_item_name=keyword)
         if not movies:
-            return pd.DataFrame({"Error": ["No movies found."]})
+            return gr.Radio(choices=[], label="No movies found.")
         
-        movie_ids = []
-        movie_names = []
+        choices = []
         for movie_name in movies[:20]:
             movie_id = find_item_id_using_name(reduced_df, item_col_name="item_name", item_name=movie_name)
-            movie_ids.append(movie_id)
-            movie_names.append(movie_name)
+            # Tuple format: (label, value) - sadece film ismi görünür, value olarak ID gönderilir
+            choices.append((movie_name, str(movie_id)))
         
-        return pd.DataFrame({"ID": movie_ids, "Movie Name": movie_names})
+        return gr.Radio(choices=choices, label="Search Results (click to select, then Get Recommendations)", value=None)
 
 def get_item_based_recommendations(movie_input, top_n):
     """Get item-based recommendations for a movie"""
     if user_item_matrix is None:
         return pd.DataFrame({"Error": ["⚠️ Please initialize the system first!"]})
     
+    if not movie_input:
+        return pd.DataFrame({"Error": ["⚠️ Please search and select a movie first!"]})
+    
     try:
+        # movie_input artık direkt ID olarak geliyor (Radio'dan seçilen value)
         try:
             item_id = int(movie_input)
             movie_name = find_item_name_using_id(reduced_df, item_id=item_id)
-        except ValueError:
+        except (ValueError, TypeError):
+            # Eğer ID değilse isim olarak ara
             movie_name = movie_input
             item_id = find_item_id_using_name(reduced_df, item_col_name="item_name", 
                                              item_name=movie_name)
@@ -147,8 +153,7 @@ def get_item_based_recommendations(movie_input, top_n):
         return pd.DataFrame({"ID": ids, "Movie Name": names, "Score": scores})
     
     except Exception as e:
-        return pd.DataFrame({"Error": [f"❌ {str(e)}\nUse Movie ID or exact name from search"]})
-
+        return pd.DataFrame({"Error": [f"❌ {str(e)}\nSelect a movie from search results."]})
 def get_user_based_recommendations(user_id, top_n):
     """Get user-based recommendations for a user"""
     if user_item_matrix is None:
@@ -184,43 +189,39 @@ def create_gradio_app():
     """Create Gradio interface"""
 
     with gr.Blocks(title="Movie Recommender System", theme=gr.themes.Soft()) as app:
-        gr.Markdown("# 🎬 Movie Recommender System")
+        gr.Markdown(
+            """
+            <div style='text-align: center'>
+            <h1>🎬 Movie Recommendation System</h1>
+            <p>Discover movies using collaborative filtering based on user ratings and preferences</p>
+            </div>
+            """
+        )
         
-        with gr.Row():
-            init_btn = gr.Button("🚀 Initialize System", variant="primary", size="lg")
-            init_output = gr.Textbox(label="Status", lines=1, placeholder="Click button to start")
+        init_btn = gr.Button("🚀 Click to Initialize System", variant="primary", size="lg")
             
-        init_btn.click(fn=initialize_system, outputs=init_output)
-        
-        gr.Markdown("---")
+        init_btn.click(fn=initialize_system, outputs=init_btn)
         
         with gr.Tabs():
-            with gr.Tab("🔍 Search Movies"):
-                gr.Markdown("Search by movie name or ID")
-
+            with gr.Tab("🔍 Item-Based Recommendations"):
+                gr.Markdown("**Step 1:** Search for a movie")
                 with gr.Row():
-                    search_input = gr.Textbox(label="Keyword or Movie ID", placeholder="e.g., Star Wars, Matrix, or 1234")
+                    search_input = gr.Textbox(label="Movie Name or ID", placeholder="e.g., Star Wars, Matrix, or 1234")
                     search_btn = gr.Button("Search", variant="primary")
-                with gr.Row():
-                    search_output = gr.Dataframe(label="Search Results", interactive=False)
                 
-                search_btn.click(fn=search_movies, inputs=search_input, outputs=search_output)
-            
-            with gr.Tab("🎥 Item-Based Recommendations"):
-                gr.Markdown("Get recommendations based on a movie")
-
+                search_output = gr.Radio(label="Search Results", choices=[], interactive=True)
+                
+                gr.Markdown("**Step 2:** Select a movie above and get recommendations")
                 with gr.Row():
-                    movie_input = gr.Textbox(label="Movie Name or ID", 
-                                            placeholder="Enter movie name or ID from search")
                     top_n_item = gr.Slider(minimum=5, maximum=20, value=10, step=1, 
-                                        label="Number of Recommendations")
+                                          label="Number of Recommendations")
                     item_rec_btn = gr.Button("Get Recommendations", variant="primary")
                 
-                with gr.Row():
-                    item_rec_output = gr.Dataframe(label="Recommendations", interactive=False)
+                item_rec_output = gr.Dataframe(label="Recommendations", interactive=False)
                 
+                search_btn.click(fn=search_movies, inputs=search_input, outputs=search_output)
                 item_rec_btn.click(fn=get_item_based_recommendations, 
-                                  inputs=[movie_input, top_n_item], 
+                                  inputs=[search_output, top_n_item], 
                                   outputs=item_rec_output)
             
             with gr.Tab("👤 User-Based Recommendations"):
