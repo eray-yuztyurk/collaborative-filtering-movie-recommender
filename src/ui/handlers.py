@@ -235,11 +235,11 @@ def add_movie_and_show_similar(movie_id, rating):
     """Add movie to profile and show similar movies in component slots"""
     if not movie_id or not rating:
         outputs = ["⚠️ Please select a movie and rating", get_user_profile()]
-        # Add 5 hidden rows + empty info + 5 None IDs
-        for _ in range(5):
+        # Add 3 hidden rows + empty info + 3 None IDs
+        for _ in range(3):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
-        outputs.extend([None] * 5)
+        outputs.extend([None] * 3)
         return outputs
     
     try:
@@ -250,27 +250,53 @@ def add_movie_and_show_similar(movie_id, rating):
         state.user_ratings[movie_id] = rating
         movie_name = find_item_name_using_id(state.reduced_df, item_id=movie_id)
         
-        # Get similar movies (max 5)
+        # Get similar movies (max 3)
         selected_item = state.user_item_matrix.loc[:, movie_id]
-        correlated_items = state.user_item_matrix.corrwith(selected_item).sort_values(ascending=False)[1:6]
+        correlated_items = state.user_item_matrix.corrwith(selected_item).sort_values(ascending=False)[1:4]
         
         status_msg = f"✅ Added: **{movie_name}** ({rating}⭐)"
         profile = get_user_profile()
         
         outputs = [status_msg, profile]
         
-        # Fill up to 5 movie slots
+        # Fill up to 3 movie slots
         similar_list = list(correlated_items.items())
         ids = []
         
-        for i in range(5):
+        for i in range(3):
             if i < len(similar_list):
                 rec_item_id, corr_rate = similar_list[i]
                 rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
-                similarity = f"{corr_rate*100:.1f}%"
+                similarity_pct = corr_rate * 100
+                
+                # Determine badge and color
+                if similarity_pct >= 70:
+                    badge = "🔥 Excellent Match"
+                    color = "#10b981"
+                elif similarity_pct >= 50:
+                    badge = "✨ Good Match"
+                    color = "#3b82f6"
+                else:
+                    badge = "👍 Fair Match"
+                    color = "#6b7280"
+                
+                # Create progress bar
+                progress_width = int(similarity_pct)
+                movie_html = f"""<div style='display: flex; align-items: center; justify-content: space-between; gap: 10px;'>
+                    <span style='flex: 1; font-weight: 500;'>{rec_item_name}</span>
+                    <div style='display: flex; flex-direction: column; align-items: flex-end; min-width: 140px;'>
+                        <div style='display: flex; align-items: center; gap: 5px; margin-bottom: 2px;'>
+                            <span style='font-size: 0.75rem; color: #666;'>Match: {similarity_pct:.1f}%</span>
+                            <span style='font-size: 0.7rem; padding: 1px 6px; background: {color}; color: white; border-radius: 3px;'>{badge}</span>
+                        </div>
+                        <div style='width: 100px; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;'>
+                            <div style='width: {progress_width}%; height: 100%; background: {color};'></div>
+                        </div>
+                    </div>
+                </div>"""
                 
                 outputs.append(gr.Row(visible=True))  # Show row
-                outputs.append(f"{rec_item_name} (Similarity: {similarity})")  # Movie info
+                outputs.append(movie_html)  # Movie info with HTML
                 ids.append(int(rec_item_id))
             else:
                 outputs.append(gr.Row(visible=False))  # Hide row
@@ -284,29 +310,105 @@ def add_movie_and_show_similar(movie_id, rating):
         
     except Exception as e:
         outputs = [f"❌ Error: {str(e)}", get_user_profile()]
-        for _ in range(5):
+        for _ in range(3):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
-        outputs.extend([None] * 5)
+        outputs.extend([None] * 3)
         return outputs
 
 def add_similar_movie(movie_id, rating):
-    """Add similar movie to profile with given rating"""
+    """Add similar movie to profile and refresh similar movies list"""
     if movie_id is None or rating is None:
-        return get_user_profile()
+        outputs = ["", get_user_profile()]
+        for _ in range(3):
+            outputs.append(gr.Row(visible=False))
+            outputs.append("")
+        outputs.extend([None] * 3)
+        return outputs
     
     try:
+        # Add rating
         state.user_ratings[int(movie_id)] = float(rating)
-        return get_user_profile()
+        
+        # Get fresh similar movies from all rated movies
+        all_similar = {}
+        for rated_movie_id in state.user_ratings.keys():
+            selected_item = state.user_item_matrix.loc[:, rated_movie_id]
+            correlated_items = state.user_item_matrix.corrwith(selected_item).sort_values(ascending=False)[1:50]
+            
+            for rec_id, corr in correlated_items.items():
+                if rec_id not in state.user_ratings:  # Skip already rated
+                    if rec_id not in all_similar:
+                        all_similar[rec_id] = corr
+                    else:
+                        all_similar[rec_id] = max(all_similar[rec_id], corr)
+        
+        # Sort and get top 3
+        sorted_similar = sorted(all_similar.items(), key=lambda x: x[1], reverse=True)[:3]
+        
+        status_msg = f"✅ Rated and refreshed recommendations"
+        profile = get_user_profile()
+        
+        outputs = [status_msg, profile]
+        ids = []
+        
+        for i in range(3):
+            if i < len(sorted_similar):
+                rec_item_id, corr_rate = sorted_similar[i]
+                rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
+                similarity_pct = corr_rate * 100
+                
+                # Determine badge and color
+                if similarity_pct >= 70:
+                    badge = "🔥 Excellent Match"
+                    color = "#10b981"
+                elif similarity_pct >= 50:
+                    badge = "✨ Good Match"
+                    color = "#3b82f6"
+                else:
+                    badge = "👍 Fair Match"
+                    color = "#6b7280"
+                
+                # Create progress bar
+                progress_width = int(similarity_pct)
+                movie_html = f"""<div style='display: flex; align-items: center; justify-content: space-between; gap: 10px;'>
+                    <span style='flex: 1; font-weight: 500;'>{rec_item_name}</span>
+                    <div style='display: flex; flex-direction: column; align-items: flex-end; min-width: 140px;'>
+                        <div style='display: flex; align-items: center; gap: 5px; margin-bottom: 2px;'>
+                            <span style='font-size: 0.75rem; color: #666;'>Match: {similarity_pct:.1f}%</span>
+                            <span style='font-size: 0.7rem; padding: 1px 6px; background: {color}; color: white; border-radius: 3px;'>{badge}</span>
+                        </div>
+                        <div style='width: 100px; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;'>
+                            <div style='width: {progress_width}%; height: 100%; background: {color};'></div>
+                        </div>
+                    </div>
+                </div>"""
+                
+                outputs.append(gr.Row(visible=True))
+                outputs.append(movie_html)
+                ids.append(int(rec_item_id))
+            else:
+                outputs.append(gr.Row(visible=False))
+                outputs.append("")
+                ids.append(None)
+        
+        outputs.extend(ids)
+        return outputs
+        
     except:
-        return get_user_profile()
+        outputs = ["", get_user_profile()]
+        for _ in range(3):
+            outputs.append(gr.Row(visible=False))
+            outputs.append("")
+        outputs.extend([None] * 3)
+        return outputs
 
 def clear_user_profile():
     """Clear all user ratings and hide similar movies"""
     state.user_ratings = {}
     outputs = [get_user_profile(), ""]
-    # Hide all 5 movie rows
-    outputs.extend([gr.Row(visible=False)] * 5)
+    # Hide all 3 movie rows
+    outputs.extend([gr.Row(visible=False)] * 3)
     return outputs
 
 def get_user_profile():

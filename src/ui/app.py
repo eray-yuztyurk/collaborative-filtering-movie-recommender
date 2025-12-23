@@ -83,21 +83,27 @@ def create_gradio_app():
                     search_input_user = gr.Textbox(label="Movie Name", placeholder="e.g., Inception, Pulp Fiction", scale=3)
                     search_btn_user = gr.Button("🔍 Search", variant="secondary", scale=1)
                 
+
                 search_results_user = gr.Radio(label="Search Results", choices=[], interactive=True)
                 
+                gr.Markdown("***Your Rating for selected Movie ??***")
                 with gr.Row():
-                    rating_slider = gr.Slider(minimum=1, maximum=5, value=5, step=0.5, label="Your Rating ⭐")
-                    add_btn = gr.Button("➕ Add to Profile & Show Similar", variant="primary")
+                    
+                    rate_btn1 = gr.Button("⭐", size="sm", variant="secondary")
+                    rate_btn2 = gr.Button("⭐⭐", size="sm", variant="secondary")
+                    rate_btn3 = gr.Button("⭐⭐⭐", size="sm", variant="secondary")
+                    rate_btn4 = gr.Button("⭐⭐⭐⭐", size="sm", variant="secondary")
+                    rate_btn5 = gr.Button("⭐⭐⭐⭐⭐", size="sm", variant="primary")
                 
                 # Step 2: Similar movies with direct rating buttons
                 gr.Markdown("<h3 style='margin-top: 25px;'>Step 2: Rate similar movies (click a star to instantly add to profile)</h3>")
                 similar_status = gr.Markdown("")
                 
-                # Similar movie slots (5 movies)
+                # Similar movie slots (3 movies)
                 similar_movies = []
-                for i in range(5):
+                for i in range(3):
                     with gr.Row(visible=False, elem_classes="movie-rating-row") as movie_row:
-                        movie_info = gr.Textbox(label="", container=False, interactive=False, elem_classes="movie-title-text")
+                        movie_info = gr.HTML("", elem_classes="movie-title-text")
                         btn1 = gr.Button("⭐", size="sm", elem_classes="rating-btn")
                         btn2 = gr.Button("⭐⭐", size="sm", elem_classes="rating-btn")
                         btn3 = gr.Button("⭐⭐⭐", size="sm", elem_classes="rating-btn")
@@ -120,7 +126,7 @@ def create_gradio_app():
                 personalized_output = gr.Dataframe(label="Your Personalized Recommendations", interactive=False)
                 
                 # Hidden state to store similar movie IDs
-                similar_ids = [gr.State(None) for _ in range(5)]
+                similar_ids = [gr.State(None) for _ in range(3)]
                 
                 # Collect all outputs for similar movies display
                 similar_outputs = [similar_status, profile_output]
@@ -132,19 +138,19 @@ def create_gradio_app():
                 
                 # Event handlers
                 search_btn_user.click(fn=search_movies, inputs=search_input_user, outputs=search_results_user)
-                add_btn.click(
-                    fn=add_movie_and_show_similar, 
-                    inputs=[search_results_user, rating_slider], 
-                    outputs=similar_outputs
-                )
                 
-                # Connect rating buttons
+                # Connect initial rating buttons
+                rate_btn1.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=1, visible=False)], outputs=similar_outputs)
+                rate_btn2.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=2, visible=False)], outputs=similar_outputs)
+                rate_btn3.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=3, visible=False)], outputs=similar_outputs)
+                rate_btn4.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=4, visible=False)], outputs=similar_outputs)
+                rate_btn5.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=5, visible=False)], outputs=similar_outputs)
                 for i, (row, info, btn1, btn2, btn3, btn4, btn5) in enumerate(similar_movies):
                     for rating, btn in enumerate([btn1, btn2, btn3, btn4, btn5], 1):
                         btn.click(
                             fn=lambda id_val=similar_ids[i], r=rating: add_similar_movie(id_val, r),
                             inputs=[similar_ids[i]],
-                            outputs=profile_output
+                            outputs=similar_outputs
                         )
                 
                 clear_btn.click(fn=clear_user_profile, outputs=[profile_output, similar_status] + [row for row, *_ in similar_movies])
