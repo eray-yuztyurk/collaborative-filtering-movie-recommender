@@ -40,18 +40,25 @@ def create_gradio_app():
         with gr.Tabs():
             # Item-Based Tab
             with gr.Tab("🔍 Item-Based Recommendations"):
-                gr.Markdown("**Step 1:** Search for a movie")
+                gr.Markdown("### Discover similar movies based on a movie you love")
+                
+                # Step 1: Search
+                gr.Markdown("<div style='background: linear-gradient(90deg, #3b82f6 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
+                gr.Markdown("<h3 style='margin: 10px 0;'>📍 Step 1: Search for a movie</h3>")
                 
                 with gr.Row():
                     search_input = gr.Textbox(
                         label="Movie Name or ID",
-                        placeholder="e.g., Star Wars, Matrix, or 1234"
+                        placeholder="e.g., Star Wars, Matrix, or 1234",
+                        scale=3
                     )
-                    search_btn = gr.Button("Search", variant="primary")
+                    search_btn = gr.Button("Search", variant="primary", scale=1)
                 
                 search_output = gr.Radio(label="Search Results", choices=[], interactive=True)
                 
-                gr.Markdown("**Step 2:** Select a movie above and get recommendations")
+                # Step 2: Get Recommendations
+                gr.Markdown("<div style='background: linear-gradient(90deg, #10b981 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
+                gr.Markdown("<h3 style='margin: 10px 0;'>📍 Step 2: Select a movie and get recommendations</h3>")
                 
                 with gr.Row():
                     top_n_item = gr.Slider(
@@ -61,7 +68,7 @@ def create_gradio_app():
                         step=1,
                         label="Number of Recommendations"
                     )
-                    item_rec_btn = gr.Button("Get Recommendations", variant="primary")
+                    item_rec_btn = gr.Button("✨ Get Recommendations", variant="primary")
                 
                 item_rec_output = gr.Dataframe(label="Recommendations", interactive=False)
                 
@@ -78,10 +85,11 @@ def create_gradio_app():
                 gr.Markdown("### Build your taste profile, get personalized recommendations")
                 
                 # Step 1: Search for favorite movie
-                gr.Markdown("<h3 style='margin-top: 20px;'>Step 1: Search and select your favorite movie</h3>")
+                gr.Markdown("<div style='background: linear-gradient(90deg, #3b82f6 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
+                gr.Markdown("<h3 style='margin: 10px 0;'>📍 Step 1: Search and select your favorite movie</h3>")
                 with gr.Row():
                     search_input_user = gr.Textbox(label="Movie Name", placeholder="e.g., Inception, Pulp Fiction", scale=3)
-                    search_btn_user = gr.Button("🔍 Search", variant="secondary", scale=1)
+                    search_btn_user = gr.Button("🔍 Search", variant="primary", scale=1)
                 
 
                 search_results_user = gr.Radio(label="Search Results", choices=[], interactive=True)
@@ -96,7 +104,8 @@ def create_gradio_app():
                     rate_btn5 = gr.Button("⭐⭐⭐⭐⭐", size="sm", variant="primary")
                 
                 # Step 2: Similar movies with direct rating buttons
-                gr.Markdown("<h3 style='margin-top: 25px;'>Step 2: Rate similar movies (click a star to instantly add to profile)</h3>")
+                gr.Markdown("<div style='background: linear-gradient(90deg, #10b981 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
+                gr.Markdown("<h3 style='margin: 10px 0;'>📍 Step 2: Rate similar movies (click a star to instantly add to profile)</h3>")
                 similar_status = gr.Markdown("")
                 
                 # Similar movie slots (3 movies)
@@ -112,13 +121,16 @@ def create_gradio_app():
                     similar_movies.append((movie_row, movie_info, btn1, btn2, btn3, btn4, btn5))
                 
                 # Step 3: Your profile
-                gr.Markdown("<h3 style='margin-top: 25px;'>Step 3: Your rated movies</h3>")
+                gr.Markdown("<div style='background: linear-gradient(90deg, #f59e0b 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
+                gr.Markdown("<h3 style='margin: 10px 0;'>📍 Step 3: Your rated movies</h3>")
                 with gr.Row():
-                    profile_output = gr.Dataframe(label="Your Profile", interactive=False, scale=3)
+                    profile_output = gr.Dataframe(interactive=False, scale=4)
                     clear_btn = gr.Button("🗑️ Clear All", variant="secondary", scale=1)
                 
                 # Step 4: Get recommendations
-                gr.Markdown("<h3 style='margin-top: 25px;'>Step 4: Generate recommendations (need 3+ ratings)</h3>")
+                gr.Markdown("<div style='background: linear-gradient(90deg, #8b5cf6 0%, transparent 100%); height: 4px; margin: 30px 0 15px 0;'></div>")
+                gr.Markdown("<h2 style='margin: 10px 0; color: #8b5cf6;'>🎯 FINAL STEP: Generate Your Personalized Recommendations</h2>")
+                gr.Markdown("<p style='color: #666; margin-bottom: 15px;'>You need at least 3 rated movies to get personalized recommendations</p>")
                 with gr.Row():
                     top_n_personalized = gr.Slider(minimum=5, maximum=20, value=10, step=1, label="Number of Recommendations")
                     rec_btn = gr.Button("✨ Get My Recommendations", variant="primary", size="lg")
@@ -158,7 +170,10 @@ def create_gradio_app():
             
             # Stats & Info Tab
             with gr.Tab("📊 System Stats & Info"):
-                gr.Markdown("View detailed information about the dataset and recommendation system")
+                gr.Markdown("### View detailed information about the dataset and recommendation system")
+                
+                gr.Markdown("<div style='background: linear-gradient(90deg, #8b5cf6 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
+                gr.Markdown("<h3 style='margin: 10px 0;'>📊 Dataset Statistics & System Information</h3>")
                 
                 info_btn = gr.Button("🔄 Refresh System Info", variant="primary", size="lg")
                 info_output = gr.Textbox(
