@@ -234,7 +234,7 @@ def get_system_info():
 def add_movie_and_show_similar(movie_id, rating):
     """Add movie to profile and show similar movies in component slots"""
     if not movie_id or not rating:
-        outputs = ["⚠️ Please select a movie and rating", get_user_profile()]
+        outputs = ["⚠️ Please select a movie and rating", get_user_profile(), get_profile_warning()]
         # Add 3 hidden rows + empty info + 3 None IDs
         for _ in range(3):
             outputs.append(gr.Row(visible=False))
@@ -256,8 +256,9 @@ def add_movie_and_show_similar(movie_id, rating):
         
         status_msg = f"✅ Added: **{movie_name}** ({rating}⭐)"
         profile = get_user_profile()
+        profile_warning = get_profile_warning()
         
-        outputs = [status_msg, profile]
+        outputs = [status_msg, profile, profile_warning]
         
         # Fill up to 3 movie slots
         similar_list = list(correlated_items.items())
@@ -269,21 +270,31 @@ def add_movie_and_show_similar(movie_id, rating):
                 rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
                 similarity_pct = corr_rate * 100
                 
-                # Determine badge and color
-                if similarity_pct >= 70:
+                # Skip if below 20%
+                if similarity_pct < 20:
+                    continue
+                
+                # Determine badge and color (5 tiers)
+                if similarity_pct >= 80:
                     badge = "🔥 Excellent Match"
-                    color = "#10b981"
-                elif similarity_pct >= 50:
-                    badge = "✨ Good Match"
-                    color = "#3b82f6"
+                    color = "#10b981"  # Green
+                elif similarity_pct >= 60:
+                    badge = "✨ Great Match"
+                    color = "#3b82f6"  # Blue
+                elif similarity_pct >= 40:
+                    badge = "👍 Good Match"
+                    color = "#f59e0b"  # Orange
+                elif similarity_pct >= 20:
+                    badge = "👌 Fair Match"
+                    color = "#6b7280"  # Gray
                 else:
-                    badge = "👍 Fair Match"
-                    color = "#6b7280"
+                    badge = "😐 Weak Match"
+                    color = "#9ca3af"  # Light gray
                 
                 # Create progress bar
                 progress_width = int(similarity_pct)
                 movie_html = f"""<div style='display: flex; align-items: center; justify-content: space-between; gap: 10px;'>
-                    <span style='flex: 1; font-weight: 500;'>{rec_item_name}</span>
+                <span style='flex: 1; font-weight: 700; font-size: 15px;'>{rec_item_name}</span>
                     <div style='display: flex; flex-direction: column; align-items: flex-end; min-width: 140px;'>
                         <div style='display: flex; align-items: center; gap: 5px; margin-bottom: 2px;'>
                             <span style='font-size: 0.75rem; color: #666;'>Match: {similarity_pct:.1f}%</span>
@@ -309,7 +320,7 @@ def add_movie_and_show_similar(movie_id, rating):
         return outputs
         
     except Exception as e:
-        outputs = [f"❌ Error: {str(e)}", get_user_profile()]
+        outputs = [f"❌ Error: {e}", get_user_profile(), get_profile_warning()]
         for _ in range(3):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
@@ -343,36 +354,46 @@ def add_similar_movie(movie_id, rating):
                     else:
                         all_similar[rec_id] = max(all_similar[rec_id], corr)
         
-        # Sort and get top 3
-        sorted_similar = sorted(all_similar.items(), key=lambda x: x[1], reverse=True)[:3]
+        # Sort and get top candidates
+        sorted_similar = sorted(all_similar.items(), key=lambda x: x[1], reverse=True)
+        
+        # Filter out items below 20% and get top 3
+        filtered_similar = [(id, corr) for id, corr in sorted_similar if corr * 100 >= 20][:3]
         
         status_msg = f"✅ Rated and refreshed recommendations"
         profile = get_user_profile()
+        profile_warning = get_profile_warning()
         
-        outputs = [status_msg, profile]
+        outputs = [status_msg, profile, profile_warning]
         ids = []
         
         for i in range(3):
-            if i < len(sorted_similar):
-                rec_item_id, corr_rate = sorted_similar[i]
+            if i < len(filtered_similar):
+                rec_item_id, corr_rate = filtered_similar[i]
                 rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
                 similarity_pct = corr_rate * 100
                 
-                # Determine badge and color
-                if similarity_pct >= 70:
+                # Determine badge and color (5 tiers)
+                if similarity_pct >= 80:
                     badge = "🔥 Excellent Match"
-                    color = "#10b981"
-                elif similarity_pct >= 50:
-                    badge = "✨ Good Match"
-                    color = "#3b82f6"
+                    color = "#10b981"  # Green
+                elif similarity_pct >= 60:
+                    badge = "✨ Great Match"
+                    color = "#3b82f6"  # Blue
+                elif similarity_pct >= 40:
+                    badge = "👍 Good Match"
+                    color = "#f59e0b"  # Orange
+                elif similarity_pct >= 20:
+                    badge = "👌 Fair Match"
+                    color = "#6b7280"  # Gray
                 else:
-                    badge = "👍 Fair Match"
-                    color = "#6b7280"
+                    badge = "😐 Weak Match"
+                    color = "#9ca3af"  # Light gray
                 
                 # Create progress bar
                 progress_width = int(similarity_pct)
                 movie_html = f"""<div style='display: flex; align-items: center; justify-content: space-between; gap: 10px;'>
-                    <span style='flex: 1; font-weight: 500;'>{rec_item_name}</span>
+                    <span style='flex: 1; font-weight: 700; font-size: 15px;'>{rec_item_name}</span>
                     <div style='display: flex; flex-direction: column; align-items: flex-end; min-width: 140px;'>
                         <div style='display: flex; align-items: center; gap: 5px; margin-bottom: 2px;'>
                             <span style='font-size: 0.75rem; color: #666;'>Match: {similarity_pct:.1f}%</span>
@@ -396,7 +417,7 @@ def add_similar_movie(movie_id, rating):
         return outputs
         
     except:
-        outputs = ["", get_user_profile()]
+        outputs = ["", get_user_profile(), get_profile_warning()]
         for _ in range(3):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
@@ -406,10 +427,18 @@ def add_similar_movie(movie_id, rating):
 def clear_user_profile():
     """Clear all user ratings and hide similar movies"""
     state.user_ratings = {}
-    outputs = [get_user_profile(), ""]
+    outputs = [get_user_profile(), "", get_profile_warning()]
     # Hide all 3 movie rows
     outputs.extend([gr.Row(visible=False)] * 3)
     return outputs
+
+def get_profile_warning():
+    """Get dynamic warning message based on number of rated movies"""
+    count = len(state.user_ratings)
+    if count >= 3:
+        return f"<p style='color: #10b981; font-weight: 600; margin-bottom: 10px;'>✅ Great! You have {count} rated movies. Ready for recommendations!</p>"
+    else:
+        return f"<p style='color: #f59e0b; margin-bottom: 10px;'>⚠️ You need at least 3 rated movies to get personalized recommendations (currently: {count})</p>"
 
 def get_user_profile():
     """Get current user profile as DataFrame"""
@@ -455,17 +484,50 @@ def generate_personalized_recommendations(top_n=10):
         # Calculate weighted scores and get top recommendations
         weighted_scores = result_df.mean(axis=1).sort_values(ascending=False).head(top_n)
         
+        # Normalize scores to 0-100 range
+        min_score = weighted_scores.min()
+        max_score = weighted_scores.max()
+        score_range = max_score - min_score
+        
         ids = []
         names = []
-        scores = []
+        match_info = []
         
         for rec_item_id, score in weighted_scores.items():
             rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
+            
+            # Normalize to 0-100 scale
+            if score_range > 0:
+                similarity_pct = ((score - min_score) / score_range) * 100
+            else:
+                similarity_pct = 100
+            
+            # Skip recommendations below 20%
+            if similarity_pct < 20:
+                continue
+            
+            # Determine badge and color (5 tiers)
+            if similarity_pct >= 80:
+                badge = "🔥 Excellent Match"
+                color = "#10b981"  # Green
+            elif similarity_pct >= 60:
+                badge = "✨ Great Match"
+                color = "#3b82f6"  # Blue
+            elif similarity_pct >= 40:
+                badge = "👍 Good Match"
+                color = "#f59e0b"  # Orange
+            elif similarity_pct >= 20:
+                badge = "👌 Fair Match"
+                color = "#6b7280"  # Gray
+            else:
+                badge = "😐 Weak Match"
+                color = "#9ca3af"  # Light gray
+            
             ids.append(rec_item_id)
             names.append(rec_item_name)
-            scores.append(f"{score:.2f}")
+            match_info.append(f"{similarity_pct:.1f}% {badge}")
         
-        return pd.DataFrame({"ID": ids, "Recommended Movie": names, "Score": scores})
+        return pd.DataFrame({"ID": ids, "Recommended Movie": names, "Match": match_info})
         
     except Exception as e:
         return pd.DataFrame({"Error": [f"❌ {str(e)}. Try rating more movies."]})
