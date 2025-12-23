@@ -43,17 +43,33 @@ def user_based_recommendation(user_item_matrix, dataframe, selected_user_id,
                                perc_threshold_rated_same_products=0.7, corr_threshold=0.5, 
                                score_threshold=3, scores_count_to_show=5):
     """Generate user-based recommendations"""
+    print(f"\n=== DEBUG: user_based_recommendation START ===")
+    print(f"Selected user ID: {selected_user_id}")
+    print(f"Thresholds - perc: {perc_threshold_rated_same_products}, corr: {corr_threshold}")
+    
     umm_for_selected_user = user_item_matrix[user_item_matrix.index == selected_user_id]
     bool_for_selected_user = umm_for_selected_user.apply(lambda col: col.notnull(), axis=1)
     
     item_ids_ratedby_selected_user = bool_for_selected_user.iloc[0].loc[lambda item_id: item_id == True]
     list_item_ids_ratedby_selected_user = bool_for_selected_user.iloc[0].loc[lambda item_id: item_id == True].index.to_list()
     
+    print(f"Step 1: User rated {len(list_item_ids_ratedby_selected_user)} items")
+    print(f"Rated item IDs: {list_item_ids_ratedby_selected_user[:10]}...")  # Show first 10
+    
     allUserIds_and_items_ratedby_selected_user = user_item_matrix.loc[:, list_item_ids_ratedby_selected_user]
     
     count_threshold_rated_same_items = len(list_item_ids_ratedby_selected_user) * perc_threshold_rated_same_products
+    print(f"Step 2: Need at least {count_threshold_rated_same_items:.1f} overlapping items")
+    
     userIds_rated_atleast_X_perc_same_items_with_selected_user = allUserIds_and_items_ratedby_selected_user[
         allUserIds_and_items_ratedby_selected_user.notnull().sum(axis=1) > count_threshold_rated_same_items]
+    
+    print(f"Step 3: Found {len(userIds_rated_atleast_X_perc_same_items_with_selected_user)} users with enough overlap")
+    
+    if len(userIds_rated_atleast_X_perc_same_items_with_selected_user) == 0:
+        print("ERROR: No users found with sufficient overlap!")
+        print("="*50)
+        return pd.DataFrame()
     
     corr_of_userIds_rated_same_items_with_selected_user = userIds_rated_atleast_X_perc_same_items_with_selected_user.T.corr().unstack()
     
@@ -61,9 +77,23 @@ def user_based_recommendation(user_item_matrix, dataframe, selected_user_id,
     userIds_corr_df.index.names = ["userId_1","userId_2"]
     userIds_corr_df.reset_index(inplace=True)
     
-    final_users_corr_df = userIds_corr_df[(userIds_corr_df["userId_1"] == selected_user_id) & 
-                                          (userIds_corr_df["userId_2"] != selected_user_id) &
-                                          (userIds_corr_df["corr"] >= corr_threshold)].sort_values(by="corr", ascending=False)
+    # Handle NaN correlations (happens when there's no variance in ratings)
+    # When corr_threshold is 0, accept NaN correlations too
+    if corr_threshold == 0.0:
+        final_users_corr_df = userIds_corr_df[(userIds_corr_df["userId_1"] == selected_user_id) & 
+                                              (userIds_corr_df["userId_2"] != selected_user_id) &
+                                              ((userIds_corr_df["corr"] >= corr_threshold) | (userIds_corr_df["corr"].isna()))].sort_values(by="corr", ascending=False)
+    else:
+        final_users_corr_df = userIds_corr_df[(userIds_corr_df["userId_1"] == selected_user_id) & 
+                                              (userIds_corr_df["userId_2"] != selected_user_id) &
+                                              (userIds_corr_df["corr"] >= corr_threshold)].sort_values(by="corr", ascending=False)
+    
+    print(f"Step 4: After correlation filter (>={corr_threshold}): {len(final_users_corr_df)} similar users")
+    
+    if len(final_users_corr_df) == 0:
+        print("ERROR: No users found with sufficient correlation!")
+        print("="*50)
+        return pd.DataFrame()
     
     list_users_to_filter = final_users_corr_df["userId_2"].to_list()
     final_rec_df = user_item_matrix.loc[list_users_to_filter,:]
@@ -73,6 +103,9 @@ def user_based_recommendation(user_item_matrix, dataframe, selected_user_id,
         ~final_rec_excluded_selected_user_items_df.index.isin(list_item_ids_ratedby_selected_user)]
     final_rec_excluded_selected_user_items_df = final_rec_excluded_selected_user_items_df.loc[
         ~final_rec_excluded_selected_user_items_df.apply(lambda row: row.isnull().all(), axis=1),:]
+    
+    print(f"Step 5: Final recommendations: {final_rec_excluded_selected_user_items_df.shape[0]} items")
+    print("="*50)
     
     return final_rec_excluded_selected_user_items_df
 

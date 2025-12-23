@@ -23,7 +23,12 @@ def create_gradio_app():
         .rating-btn { flex: 0 0 auto !important; min-width: 60px !important; max-width: 110px !important; }
     """) as app:
         # Header
-        gr.Markdown("<div style='text-align: center;'><h1>🎬 Movie Recommendation System</h1><p>Discover movies using collaborative filtering based on user ratings and preferences</p></div>")
+        gr.HTML("""
+            <div style='text-align: center; margin: 20px 0;'>
+                <h1 style='margin: 0; padding: 0;'>🎬 Movie Recommendation System</h1>
+                <p style='margin: 10px 0 0 0; color: #666;'>Discover movies using collaborative filtering based on user ratings and preferences</p>
+            </div>
+        """)
         
         # Initialize button
         init_btn = gr.Button("🚀 Click to Initialize System", variant="primary", size="lg")
@@ -99,7 +104,6 @@ def create_gradio_app():
                 # Step 2: Similar movies with direct rating buttons
                 gr.Markdown("<div style='background: linear-gradient(90deg, #10b981 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
                 gr.Markdown("<h3 style='margin: 10px 0;'>📍 Step 2: Rate similar movies (click a star to instantly add to profile)</h3>")
-                similar_status = gr.Markdown("")
                 
                 # Similar movie slots (3 movies)
                 similar_movies = []
@@ -134,7 +138,7 @@ def create_gradio_app():
                 similar_ids = [gr.State(None) for _ in range(3)]
                 
                 # Collect all outputs for similar movies display
-                similar_outputs = [similar_status, profile_output, profile_warning]
+                similar_outputs = [profile_output, profile_warning]
                 for row, info, _, _, _, _, _ in similar_movies:
                     similar_outputs.append(row)
                     similar_outputs.append(info)
@@ -159,7 +163,7 @@ def create_gradio_app():
                             queue=False
                         )
                 
-                clear_btn.click(fn=clear_user_profile, outputs=[profile_output, similar_status, profile_warning] + [row for row, *_ in similar_movies], queue=False)
+                clear_btn.click(fn=clear_user_profile, outputs=[profile_output, profile_warning] + [row for row, *_ in similar_movies], queue=False)
                 rec_btn.click(fn=generate_personalized_recommendations, inputs=top_n_personalized, outputs=personalized_output, queue=False)
             
             # Stats & Info Tab
