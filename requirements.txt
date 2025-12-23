@@ -1,0 +1,5 @@
+pandas
+numpy
+scikit-surprise
+gradio==3.50.2
+ipython

@@ -1,7 +1,6 @@
 <h1 align="center">Collaborative-Filtering Movie Recommender</h1>
 
-A compact collaborative-filtering movie recommender I built to demonstrate how user–item interactions (ratings or implicit feedback) can drive personalized movie suggestions.  
-The repository is notebook-first and focuses on reproducible experiments, clear examples, and practical paths to extend or productionize the core ideas.
+A collaborative-filtering movie recommender with a clean Gradio web interface. Built to demonstrate how user–item interactions drive personalized movie suggestions using memory-based and model-based approaches.
 
 <table align="center">
   <tr>
@@ -11,11 +10,10 @@ The repository is notebook-first and focuses on reproducible experiments, clear 
       <ul>
         <li><a href="#what-this-does">What this does</a></li>
         <li><a href="#key-features">Key features</a></li>
-        <li><a href="#how-it-works-high-level">How it works (high level)</a></li>
+        <li><a href="#project-structure">Project structure</a></li>
         <li><a href="#quick-start">Quick start</a></li>
-        <li><a href="#example-usage">Example usage</a></li>
-        <li><a href="#notebooks-and-experiments">Notebooks and experiments</a></li>
-        <li><a href="#extending-the-project">Extending the project</a></li>
+        <li><a href="#usage">Usage</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
         <li><a href="#notes-on-data">Notes on data</a></li>
         <li><a href="#contributing">Contributing</a></li>
         <li><a href="#license">License</a></li>
@@ -32,48 +30,113 @@ The repository is notebook-first and focuses on reproducible experiments, clear 
 ---
 
 ## What this does
-- Implements memory-based and model-based collaborative filtering methods using rating datasets.  
-- Builds user–item interaction matrices, computes similarity scores, and generates top-N personalized recommendations.  
-- Includes a runnable Jupyter notebook that walks through evaluation (RMSE + ranking metrics) and compares CF approaches.
+- **Web Interface**: Interactive Gradio UI for movie recommendations
+- **Item-Based CF**: Find similar movies based on user rating patterns
+- **User-Based CF**: Get recommendations based on similar users
+- **Fast Loading**: Caches processed data for instant subsequent loads
+- **Clean Architecture**: Modular codebase with separated concerns
 
 ---
 
 ## Key features
-- Notebook-first workflow covering:
-  - User-based and item-based neighborhood CF  
-  - Matrix factorization with SVD  
-- Evaluation using standard metrics: RMSE, precision@K, recall@K, MAP.  
-- Clean, reproducible processing pipelines with minimal dependencies.  
-- Notes on transitioning from experimental notebooks to scripts or simple services.
+- 🎬 **Search Movies**: Find movies by keyword
+- 🎯 **Item-Based Recommendations**: "If you liked X, you'll like Y"
+- 👤 **User-Based Recommendations**: Personalized suggestions based on similar users
+- ⚡ **Instant Start**: Pre-computed data included - no waiting on first run!
+- 📊 **Jupyter Notebooks**: Exploratory analysis and experiments included
+- 📖 **Detailed Documentation**: See [docs/RECOMMENDATION_LOGIC.md](docs/RECOMMENDATION_LOGIC.md)
 
 ---
 
-## How it works (high level)
-1. Load & preprocess user-item interaction data (explicit ratings or implicit events).  
-2. Build the sparse user-item matrix and apply weighting/normalization.  
-3. Select an approach:
-   - **Memory-based**: user–user or item–item similarities + neighborhood aggregation.  
-   - **Model-based**: matrix factorization (SVD/ALS) or factorization-machine-style models.  
-4. Rank candidate items for each user and evaluate via ranking metrics.  
-5. Iterate with hyperparameters, similarity functions, or loss functions.
+## Project structure
+```
+├── app.py                 # Main application entry point
+├── src/
+│   ├── data_utils.py     # Data loading and preprocessing
+│   ├── recommender.py    # Recommendation algorithms
+│   └── gradio_app.py     # Gradio web interface
+├── docs/                 # Documentation
+│   └── RECOMMENDATION_LOGIC.md  # How recommendations work
+├── notebooks/            # Jupyter notebooks for analysis
+├── data/                 # MovieLens dataset
+├── dumps/               # Pre-computed data (included for instant start)
+└── requirements.txt     # Python dependencies
+```
 
 ---
 
 ## Quick start
 
-1. Clone the repo
+### 1. Clone and setup
 ```bash
 git clone https://github.com/eray-yuztyurk/collaborative-filtering-movie-recommender.git
 cd collaborative-filtering-movie-recommender
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-2. Start Jupyter and open the main notebook
+### 2. Download data
 ```bash
-jupyter lab
-# or
-jupyter notebook
+bash download_movielens.sh
 ```
-Then open: `collaborative-filtering-movie-recommendation.ipynb`
+
+### 3. Run the web app
+```bash
+python app.py
+```
+
+Open your browser at **http://127.0.0.1:7861**
+
+**Note**: The app loads instantly because pre-computed data is included!
+
+---
+
+## Usage
+
+### Web Interface
+1. **Initialize System**: Click the initialize button (loads in ~3 seconds with included cache)
+2. **Search Movies**: Find movies by keyword (e.g., "Star Wars", "Matrix")
+3. **Get Recommendations**:
+   - **Item-Based**: Enter exact movie name from search results
+   - **User-Based**: Enter a user ID to get personalized recommendations
+
+**First-time users**: The system includes pre-processed data, so you can explore recommendations immediately without waiting for data processing.
+
+### Notebooks
+Explore the analysis notebooks:
+```bash
+jupyter lab notebooks/
+```
+
+### Documentation
+For detailed explanation of how recommendations work, see [docs/RECOMMENDATION_LOGIC.md](docs/RECOMMENDATION_LOGIC.md)
+
+---
+
+## How it works
+
+### Memory-Based Collaborative Filtering
+- **Item-Based**: Finds similar movies based on user rating patterns
+- **User-Based**: Finds similar users and recommends their highly-rated movies
+
+### Data Processing
+1. Load MovieLens dataset (movies + ratings)
+2. Filter users/items with minimum interaction thresholds
+3. Create user-item matrix
+4. Calculate correlations/similarities
+5. Generate recommendations
+
+### Performance Optimization
+- Processed data is cached in `dumps/` folder
+- First initialization: ~30 seconds
+- Subsequent loads: <3 seconds
+
+---
 
 > Note: this repository is notebook-first — there is no top-level script such as `main.py` in the current tree. Use the notebook as the canonical entry point.
 
