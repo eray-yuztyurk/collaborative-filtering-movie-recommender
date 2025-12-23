@@ -2,7 +2,6 @@
 Data loading and preprocessing utilities
 """
 import pandas as pd
-from IPython.display import display
 
 def load_dataset():
     """Load movies and ratings datasets and merge them"""
@@ -16,13 +15,13 @@ def data_info(dataframe):
     print("Dataframe Shape:", dataframe.shape)
     print("-"*50)
     print("Dataframe Info:")
-    display(dataframe.info())
+    print(dataframe.info())
     print("-"*50)
     print("Missing Values in Each Column:")
-    display(dataframe.isnull().sum())
+    print(dataframe.isnull().sum())
     print("-"*50)
     print("Dataframe Sample:")
-    display(dataframe.head())
+    print(dataframe.head())
 
 def data_stats(dataframe, user_col="user_id", item_col="item_id", user_rating_threshold=30, item_rated_threshold=1000):
     """Display statistics about users and items"""
