@@ -7,11 +7,11 @@ from src.ui.handlers import (
     initialize_system,
     search_movies,
     get_item_based_recommendations,
-    get_system_info,
+    get_system_info_handler,
     # New user-based functions
     add_movie_and_show_similar,
     add_similar_movie,
-    clear_user_profile,
+    clear_user_profile_handler,
     generate_personalized_recommendations
 )
 
@@ -162,7 +162,7 @@ def create_gradio_app():
                             outputs=similar_outputs
                         )
                 
-                clear_btn.click(fn=clear_user_profile, outputs=[profile_output, profile_warning] + [row for row, *_ in similar_movies])
+                clear_btn.click(fn=clear_user_profile_handler, outputs=[profile_output, profile_warning] + [row for row, *_ in similar_movies])
                 rec_btn.click(fn=generate_personalized_recommendations, inputs=top_n_personalized, outputs=personalized_output)
             
             # Stats & Info Tab
@@ -181,7 +181,7 @@ def create_gradio_app():
                     show_copy_button=True
                 )
                 
-                info_btn.click(fn=get_system_info, outputs=info_output)
+                info_btn.click(fn=get_system_info_handler, outputs=info_output)
         
         # Footer
         gr.Markdown(

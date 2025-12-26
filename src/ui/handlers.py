@@ -26,6 +26,9 @@ from src.core.recommender import (
     user_based_recommendation
 )
 from src.core.cache_manager import save_dumps, load_dumps, dumps_exist
+# Yeni modüller
+from src.ui.helpers.profile_manager import get_user_profile, get_profile_warning, clear_user_profile
+from src.ui.helpers.stats import get_system_info
 
 # Global state
 class AppState:
@@ -224,43 +227,9 @@ def get_user_based_recommendations(user_id, top_n):
         gr.Error(f"❌ Failed to generate recommendations: {str(e)}")
         return pd.DataFrame({"Error": [f"❌ {str(e)}"]})
 
-def get_system_info():
-    """Get system information and statistics"""
-    if state.df is None or state.reduced_df is None or state.user_item_matrix is None:
-        gr.Warning("⚠️ System not initialized yet")
-        return "⚠️ Please initialize the system first!"
-    
-    gr.Info("🔄 Generating system statistics...")
-    info = []
-    info.append("=" * 80)
-    info.append("📊 SYSTEM INFORMATION")
-    info.append("=" * 80)
-    info.append(f"\n🎬 Original Dataset:")
-    info.append(f"   • Total ratings: {len(state.df):,}")
-    info.append(f"   • Unique users: {state.df['user_id'].nunique():,}")
-    info.append(f"   • Unique movies: {state.df['item_id'].nunique():,}")
-    info.append(f"   • Date range: {state.df['timestamp'].min()} to {state.df['timestamp'].max()}")
-    
-    info.append(f"\n🔍 After Filtering (threshold: {USER_RATING_THRESHOLD} ratings/user, {ITEM_RATED_THRESHOLD} ratings/movie):")
-    info.append(f"   • Filtered ratings: {len(state.reduced_df):,}")
-    info.append(f"   • Active users: {state.reduced_df['user_id'].nunique():,}")
-    info.append(f"   • Popular movies: {state.reduced_df['item_id'].nunique():,}")
-    
-    info.append(f"\n🔢 User-Item Matrix:")
-    info.append(f"   • Dimensions: {state.user_item_matrix.shape[0]:,} users × {state.user_item_matrix.shape[1]:,} movies")
-    info.append(f"   • Total cells: {state.user_item_matrix.shape[0] * state.user_item_matrix.shape[1]:,}")
-    info.append(f"   • Sparsity: {(1 - state.user_item_matrix.notna().sum().sum() / (state.user_item_matrix.shape[0] * state.user_item_matrix.shape[1])) * 100:.2f}%")
-    
-    info.append(f"\n📈 Statistics:")
-    info.append(f"   • Average rating: {state.reduced_df['rating'].mean():.2f}")
-    info.append(f"   • Median rating: {state.reduced_df['rating'].median():.1f}")
-    info.append(f"   • Rating std dev: {state.reduced_df['rating'].std():.2f}")
-    info.append(f"   • Data retention: {(len(state.reduced_df) / len(state.df)) * 100:.2f}%")
-    
-    info.append("\n" + "=" * 80)
-    
+def get_system_info_handler():
     gr.Info("📊 System statistics refreshed")
-    return "\n".join(info)
+    return get_system_info(state, USER_RATING_THRESHOLD, ITEM_RATED_THRESHOLD)
 
 # ============================================================================
 # NEW USER-BASED RECOMMENDATION FUNCTIONS
@@ -278,8 +247,7 @@ def add_movie_and_show_similar(movie_id, rating):
     """Add movie to profile and show similar movies in component slots"""
     if not movie_id or not rating:
         gr.Warning("⚠️ Please select a movie and rating first")
-        outputs = [get_user_profile(), get_profile_warning()]
-        # Add 3 hidden rows + empty info + 3 None IDs
+        outputs = [get_user_profile(state.user_ratings, state.reduced_df), get_profile_warning(state.user_ratings)]
         for _ in range(3):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
@@ -299,8 +267,8 @@ def add_movie_and_show_similar(movie_id, rating):
         correlated_items = state.user_item_matrix.corrwith(selected_item).sort_values(ascending=False)[1:MAX_SIMILAR_MOVIES_TO_SHOW+1]
         
         gr.Info(f"✅ Added '{movie_name}' with {rating}⭐ rating to your profile")
-        profile = get_user_profile()
-        profile_warning = get_profile_warning()
+        profile = get_user_profile(state.user_ratings, state.reduced_df)
+        profile_warning = get_profile_warning(state.user_ratings)
         
         outputs = [profile, profile_warning]
         
@@ -351,7 +319,7 @@ def add_movie_and_show_similar(movie_id, rating):
         
     except Exception as e:
         gr.Error(f"❌ Failed to add movie: {str(e)}")
-        outputs = [get_user_profile(), get_profile_warning()]
+        outputs = [get_user_profile(state.user_ratings, state.reduced_df), get_profile_warning(state.user_ratings)]
         for _ in range(MAX_SIMILAR_MOVIES_TO_SHOW):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
@@ -362,7 +330,7 @@ def add_similar_movie(movie_id, rating):
     """Add similar movie to profile and refresh similar movies list"""
     if movie_id is None or rating is None:
         gr.Warning("⚠️ No movie selected")
-        outputs = ["", get_user_profile()]
+        outputs = ["", get_user_profile(state.user_ratings, state.reduced_df)]
         for _ in range(MAX_SIMILAR_MOVIES_TO_SHOW):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
@@ -394,8 +362,8 @@ def add_similar_movie(movie_id, rating):
         
         movie_name = find_item_name_using_id(state.reduced_df, item_id=movie_id)
         gr.Info(f"✅ Rated '{movie_name}' and refreshed recommendations")
-        profile = get_user_profile()
-        profile_warning = get_profile_warning()
+        profile = get_user_profile(state.user_ratings, state.reduced_df)
+        profile_warning = get_profile_warning(state.user_ratings)
         
         outputs = [profile, profile_warning]
         ids = []
@@ -437,45 +405,25 @@ def add_similar_movie(movie_id, rating):
         
     except Exception as e:
         gr.Error(f"❌ Failed to rate movie: {str(e)}")
-        outputs = [get_user_profile(), get_profile_warning()]
+        outputs = [get_user_profile(state.user_ratings, state.reduced_df), get_profile_warning(state.user_ratings)]
         for _ in range(MAX_SIMILAR_MOVIES_TO_SHOW):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
         outputs.extend([None] * MAX_SIMILAR_MOVIES_TO_SHOW)
         return outputs
 
-def clear_user_profile():
-    """Clear all user ratings and hide similar movies"""
-    state.user_ratings = {}
+def clear_user_profile_handler():
+    clear_user_profile(state)
     gr.Info("🗑️ Profile cleared successfully")
-    outputs = [get_user_profile(), get_profile_warning()]
-    # Hide all movie rows
+    outputs = [get_user_profile(state.user_ratings, state.reduced_df), get_profile_warning(state.user_ratings)]
     outputs.extend([gr.Row(visible=False)] * MAX_SIMILAR_MOVIES_TO_SHOW)
     return outputs
 
-def get_profile_warning():
-    """Get dynamic warning message based on number of rated movies"""
-    count = len(state.user_ratings)
-    if count >= MIN_RATED_MOVIES_FOR_RECOMMENDATIONS:
-        return f"<p style='color: #10b981; font-weight: 600; margin-bottom: 10px;'>✅ Great! You have {count} rated movies. Ready for recommendations!</p>"
-    else:
-        return f"<p style='color: #f59e0b; margin-bottom: 10px;'>⚠️ You need at least {MIN_RATED_MOVIES_FOR_RECOMMENDATIONS} rated movies to get personalized recommendations (currently: {count})</p>"
+def get_profile_warning_handler():
+    return get_profile_warning(state.user_ratings)
 
-def get_user_profile():
-    """Get current user profile as DataFrame"""
-    if not state.user_ratings:
-        return pd.DataFrame({"Message": ["No ratings yet. Search and add movies!"]})
-    
-    ids = []
-    names = []
-    ratings = []
-    
-    for movie_id, rating in state.user_ratings.items():
-        ids.append(movie_id)
-        names.append(find_item_name_using_id(state.reduced_df, item_id=movie_id))
-        ratings.append(str(int(rating) * "⭐"))
-    
-    return pd.DataFrame({"ID": ids, "Movie": names, "Your Rating": ratings})
+def get_user_profile_handler():
+    return get_user_profile(state.user_ratings, state.reduced_df)
 
 def generate_personalized_recommendations(top_n=10):
     """Generate recommendations based on user's ratings"""
