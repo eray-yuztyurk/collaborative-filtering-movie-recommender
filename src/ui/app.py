@@ -120,7 +120,7 @@ def create_gradio_app():
                 # Step 3: Your profile
                 gr.Markdown("<div style='background: linear-gradient(90deg, #f59e0b 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
                 gr.Markdown("<h3 style='margin: 10px 0;'>📍 Step 3: Your rated movies</h3>")
-                profile_warning = gr.HTML("<p style='color: #f59e0b; margin-bottom: 10px;'>⚠️ You need at least 3 rated movies to get personalized recommendations</p>")
+                profile_warning = gr.HTML("<p style='color: #f59e0b; margin-bottom: 10px;'>⚠️ You need at least 5 rated movies to get personalized recommendations</p>")
                 with gr.Row():
                     profile_output = gr.Dataframe(interactive=False, scale=7)
                     clear_btn = gr.Button("🗑️ Clear All", variant="secondary", scale=1, min_width=80)
@@ -146,25 +146,24 @@ def create_gradio_app():
                     similar_outputs.append(state_id)
                 
                 # Event handlers
-                search_btn_user.click(fn=search_movies, inputs=search_input_user, outputs=search_results_user, queue=False)
+                search_btn_user.click(fn=search_movies, inputs=search_input_user, outputs=search_results_user)
                 
                 # Connect initial rating buttons
-                rate_btn1.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=1, visible=False)], outputs=similar_outputs, queue=False)
-                rate_btn2.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=2, visible=False)], outputs=similar_outputs, queue=False)
-                rate_btn3.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=3, visible=False)], outputs=similar_outputs, queue=False)
-                rate_btn4.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=4, visible=False)], outputs=similar_outputs, queue=False)
-                rate_btn5.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=5, visible=False)], outputs=similar_outputs, queue=False)
+                rate_btn1.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=1, visible=False)], outputs=similar_outputs)
+                rate_btn2.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=2, visible=False)], outputs=similar_outputs)
+                rate_btn3.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=3, visible=False)], outputs=similar_outputs)
+                rate_btn4.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=4, visible=False)], outputs=similar_outputs)
+                rate_btn5.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=5, visible=False)], outputs=similar_outputs)
                 for i, (row, info, btn1, btn2, btn3, btn4, btn5) in enumerate(similar_movies):
                     for rating, btn in enumerate([btn1, btn2, btn3, btn4, btn5], 1):
                         btn.click(
                             fn=lambda id_val=similar_ids[i], r=rating: add_similar_movie(id_val, r),
                             inputs=[similar_ids[i]],
-                            outputs=similar_outputs,
-                            queue=False
+                            outputs=similar_outputs
                         )
                 
-                clear_btn.click(fn=clear_user_profile, outputs=[profile_output, profile_warning] + [row for row, *_ in similar_movies], queue=False)
-                rec_btn.click(fn=generate_personalized_recommendations, inputs=top_n_personalized, outputs=personalized_output, queue=False)
+                clear_btn.click(fn=clear_user_profile, outputs=[profile_output, profile_warning] + [row for row, *_ in similar_movies])
+                rec_btn.click(fn=generate_personalized_recommendations, inputs=top_n_personalized, outputs=personalized_output)
             
             # Stats & Info Tab
             with gr.Tab("📊 System Stats & Info"):

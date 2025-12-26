@@ -5,6 +5,19 @@ Business logic for recommendation operations
 import gradio as gr
 import pandas as pd
 from src.utils.data_utils import load_dataset, dataframe_reduction
+from src.utils.constants import (
+    USER_RATING_THRESHOLD,
+    ITEM_RATED_THRESHOLD,
+    MAX_SEARCH_RESULTS,
+    MIN_SIMILARITY_THRESHOLD,
+    MAX_SIMILAR_MOVIES_TO_SHOW,
+    MIN_RATED_MOVIES_FOR_RECOMMENDATIONS,
+    USER_SIMILARITY_OVERLAP_THRESHOLDS,
+    USER_CORRELATION_THRESHOLDS,
+    RATING_COUNT_BREAKPOINTS,
+    SIMILARITY_BADGES,
+    PROGRESS_STEPS
+)
 from src.core.recommender import (
     create_user_item_matrix,
     search_item_names_with_keyword,
@@ -26,11 +39,11 @@ state = AppState()
 
 def initialize_system(progress=gr.Progress()):
     """Initialize the recommendation system"""
+    gr.Info("⏳ Initializing system, please wait...")
     
     if dumps_exist():
         try:
             progress(0, desc="📦 Loading from cache...")
-            print("📦 Loading from cache...")
             state.df, state.reduced_df, state.user_item_matrix = load_dumps()
             gr.Info("✅ System loaded successfully from cache!")
             return gr.Button(value="✅ System Ready", interactive=False)
@@ -40,25 +53,21 @@ def initialize_system(progress=gr.Progress()):
     
     try:
         progress(0, desc="⏳ Initializing...")
-        print("⏳ Processing data...")
         
-        progress(0.2, desc="📂 Loading dataset...")
-        print("  → Loading dataset...")
+        progress(PROGRESS_STEPS["loading_dataset"], desc="📂 Loading dataset...")
         state.df = load_dataset()
         state.df.columns = ["user_id", "item_id", "rating", "timestamp", "item_name", "genres"]
         
-        progress(0.4, desc="🔍 Filtering data...")
-        print("  → Filtering data...")
+        progress(PROGRESS_STEPS["filtering_data"], desc="🔍 Filtering data...")
         state.reduced_df = dataframe_reduction(
             state.df, 
             user_col="user_id", 
             item_col="item_id",
-            user_rating_threshold=100, 
-            item_rated_threshold=3000
+            user_rating_threshold=USER_RATING_THRESHOLD, 
+            item_rated_threshold=ITEM_RATED_THRESHOLD
         )
         
-        progress(0.7, desc="🔢 Creating matrix...")
-        print("  → Creating matrix...")
+        progress(PROGRESS_STEPS["creating_matrix"], desc="🔢 Creating matrix...")
         state.user_item_matrix = create_user_item_matrix(
             state.reduced_df,
             index_col="user_id",
@@ -66,12 +75,10 @@ def initialize_system(progress=gr.Progress()):
             values_col="rating"
         )
         
-        progress(0.9, desc="💾 Saving to cache...")
-        print("  → Saving to dumps/...")
+        progress(PROGRESS_STEPS["saving_cache"], desc="💾 Saving to cache...")
         save_dumps(state.df, state.reduced_df, state.user_item_matrix)
         
-        progress(1.0, desc="✅ Complete!")
-        print("✅ Done!")
+        progress(PROGRESS_STEPS["complete"], desc="✅ Complete!")
         return gr.Button(
             value=f"✅ Ready! {state.user_item_matrix.shape[0]} users, {state.user_item_matrix.shape[1]} movies",
             interactive=False
@@ -83,7 +90,14 @@ def initialize_system(progress=gr.Progress()):
 def search_movies(keyword):
     """Search for movies by keyword or ID"""
     if state.df is None:
+        gr.Warning("⚠️ Please initialize the system first!")
         return gr.Radio(choices=[], label="⚠️ Please initialize the system first!")
+    
+    if not keyword or not keyword.strip():
+        gr.Warning("⚠️ Please enter a movie name or ID")
+        return gr.Radio(choices=[], label="⚠️ Please enter a movie name or ID")
+    
+    gr.Info(f"🔍 Searching for '{keyword}'...")
     
     try:
         # Try to parse as ID
@@ -91,9 +105,11 @@ def search_movies(keyword):
         movie_data = state.reduced_df[state.reduced_df["item_id"] == movie_id]
         if not movie_data.empty:
             movie_name = movie_data["item_name"].values[0]
+            gr.Info(f"✅ Found movie: {movie_name}")
             choices = [(movie_name, str(movie_id))]
             return gr.Radio(choices=choices, label="Search Results", value=str(movie_id))
         else:
+            gr.Warning(f"⚠️ Movie ID {movie_id} not found")
             return gr.Radio(choices=[], label=f"Movie ID {movie_id} not found.")
     except ValueError:
         # Search by name
@@ -103,10 +119,12 @@ def search_movies(keyword):
             searched_item_name=keyword
         )
         if not movies:
+            gr.Warning("⚠️ No movies found matching your search")
             return gr.Radio(choices=[], label="No movies found.")
         
+        gr.Info(f"🎬 Found {len(movies[:MAX_SEARCH_RESULTS])} movies matching '{keyword}'")
         choices = []
-        for movie_name in movies[:20]:
+        for movie_name in movies[:MAX_SEARCH_RESULTS]:
             movie_id = find_item_id_using_name(
                 state.reduced_df,
                 item_col_name="item_name",
@@ -130,6 +148,7 @@ def get_item_based_recommendations(movie_input, top_n):
         gr.Warning("⚠️ Please select a movie first")
         return pd.DataFrame({"Error": ["⚠️ Please search and select a movie first!"]})
     
+    gr.Info("🔍 Calculating similar movies...")
     try:
         # Parse movie ID
         try:
@@ -169,12 +188,15 @@ def get_item_based_recommendations(movie_input, top_n):
 def get_user_based_recommendations(user_id, top_n):
     """Get user-based recommendations for a user"""
     if state.user_item_matrix is None:
+        gr.Warning("⚠️ System not initialized yet")
         return pd.DataFrame({"Error": ["⚠️ Please initialize the system first!"]})
     
+    gr.Info(f"🔍 Finding recommendations for User {user_id}...")
     try:
         user_id = int(user_id)
         
         if user_id not in state.user_item_matrix.index:
+            gr.Warning(f"⚠️ User ID {user_id} not found in the system")
             return pd.DataFrame({"Error": [f"❌ User ID {user_id} not found."]})
         
         # Get recommendations
@@ -192,11 +214,14 @@ def get_user_based_recommendations(user_id, top_n):
             names.append(rec_item_name)
             scores.append(f"{score:.2f}")
         
+        gr.Info(f"✅ Generated {len(ids)} recommendations for User {user_id}")
         return pd.DataFrame({"ID": ids, "Movie Name": names, "Score": scores})
     
     except ValueError:
+        gr.Error("❌ Please enter a valid User ID (number)")
         return pd.DataFrame({"Error": ["❌ Please enter a valid User ID (number)."]})
     except Exception as e:
+        gr.Error(f"❌ Failed to generate recommendations: {str(e)}")
         return pd.DataFrame({"Error": [f"❌ {str(e)}"]})
 
 def get_system_info():
@@ -205,6 +230,7 @@ def get_system_info():
         gr.Warning("⚠️ System not initialized yet")
         return "⚠️ Please initialize the system first!"
     
+    gr.Info("🔄 Generating system statistics...")
     info = []
     info.append("=" * 80)
     info.append("📊 SYSTEM INFORMATION")
@@ -215,7 +241,7 @@ def get_system_info():
     info.append(f"   • Unique movies: {state.df['item_id'].nunique():,}")
     info.append(f"   • Date range: {state.df['timestamp'].min()} to {state.df['timestamp'].max()}")
     
-    info.append(f"\n🔍 After Filtering (threshold: 100 ratings/user, 3000 ratings/movie):")
+    info.append(f"\n🔍 After Filtering (threshold: {USER_RATING_THRESHOLD} ratings/user, {ITEM_RATED_THRESHOLD} ratings/movie):")
     info.append(f"   • Filtered ratings: {len(state.reduced_df):,}")
     info.append(f"   • Active users: {state.reduced_df['user_id'].nunique():,}")
     info.append(f"   • Popular movies: {state.reduced_df['item_id'].nunique():,}")
@@ -240,6 +266,14 @@ def get_system_info():
 # NEW USER-BASED RECOMMENDATION FUNCTIONS
 # ============================================================================
 
+def get_similarity_badge(similarity_pct):
+    """Get badge text and color based on similarity percentage"""
+    for level in ["excellent", "great", "good", "fair", "weak"]:
+        badge_info = SIMILARITY_BADGES[level]
+        if similarity_pct >= badge_info["threshold"]:
+            return badge_info["text"], badge_info["color"]
+    return SIMILARITY_BADGES["weak"]["text"], SIMILARITY_BADGES["weak"]["color"]
+
 def add_movie_and_show_similar(movie_id, rating):
     """Add movie to profile and show similar movies in component slots"""
     if not movie_id or not rating:
@@ -262,7 +296,7 @@ def add_movie_and_show_similar(movie_id, rating):
         
         # Get similar movies (max 3)
         selected_item = state.user_item_matrix.loc[:, movie_id]
-        correlated_items = state.user_item_matrix.corrwith(selected_item).sort_values(ascending=False)[1:4]
+        correlated_items = state.user_item_matrix.corrwith(selected_item).sort_values(ascending=False)[1:MAX_SIMILAR_MOVIES_TO_SHOW+1]
         
         gr.Info(f"✅ Added '{movie_name}' with {rating}⭐ rating to your profile")
         profile = get_user_profile()
@@ -274,32 +308,18 @@ def add_movie_and_show_similar(movie_id, rating):
         similar_list = list(correlated_items.items())
         ids = []
         
-        for i in range(3):
+        for i in range(MAX_SIMILAR_MOVIES_TO_SHOW):
             if i < len(similar_list):
                 rec_item_id, corr_rate = similar_list[i]
                 rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
                 similarity_pct = corr_rate * 100
                 
-                # Skip if below 20%
-                if similarity_pct < 20:
+                # Skip if below threshold
+                if similarity_pct < MIN_SIMILARITY_THRESHOLD:
                     continue
                 
-                # Determine badge and color (5 tiers)
-                if similarity_pct >= 80:
-                    badge = "🔥 Excellent Match"
-                    color = "#10b981"  # Green
-                elif similarity_pct >= 60:
-                    badge = "✨ Great Match"
-                    color = "#3b82f6"  # Blue
-                elif similarity_pct >= 40:
-                    badge = "👍 Good Match"
-                    color = "#f59e0b"  # Orange
-                elif similarity_pct >= 20:
-                    badge = "👌 Fair Match"
-                    color = "#6b7280"  # Gray
-                else:
-                    badge = "😐 Weak Match"
-                    color = "#9ca3af"  # Light gray
+                # Get badge and color from constants
+                badge, color = get_similarity_badge(similarity_pct)
                 
                 # Create progress bar
                 progress_width = int(similarity_pct)
@@ -332,20 +352,21 @@ def add_movie_and_show_similar(movie_id, rating):
     except Exception as e:
         gr.Error(f"❌ Failed to add movie: {str(e)}")
         outputs = [get_user_profile(), get_profile_warning()]
-        for _ in range(3):
+        for _ in range(MAX_SIMILAR_MOVIES_TO_SHOW):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
-        outputs.extend([None] * 3)
+        outputs.extend([None] * MAX_SIMILAR_MOVIES_TO_SHOW)
         return outputs
 
 def add_similar_movie(movie_id, rating):
     """Add similar movie to profile and refresh similar movies list"""
     if movie_id is None or rating is None:
+        gr.Warning("⚠️ No movie selected")
         outputs = ["", get_user_profile()]
-        for _ in range(3):
+        for _ in range(MAX_SIMILAR_MOVIES_TO_SHOW):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
-        outputs.extend([None] * 3)
+        outputs.extend([None] * MAX_SIMILAR_MOVIES_TO_SHOW)
         return outputs
     
     try:
@@ -368,8 +389,8 @@ def add_similar_movie(movie_id, rating):
         # Sort and get top candidates
         sorted_similar = sorted(all_similar.items(), key=lambda x: x[1], reverse=True)
         
-        # Filter out items below 20% and get top 3
-        filtered_similar = [(id, corr) for id, corr in sorted_similar if corr * 100 >= 20][:3]
+        # Filter out items below threshold and get top movies
+        filtered_similar = [(id, corr) for id, corr in sorted_similar if corr * 100 >= MIN_SIMILARITY_THRESHOLD][:MAX_SIMILAR_MOVIES_TO_SHOW]
         
         movie_name = find_item_name_using_id(state.reduced_df, item_id=movie_id)
         gr.Info(f"✅ Rated '{movie_name}' and refreshed recommendations")
@@ -379,28 +400,14 @@ def add_similar_movie(movie_id, rating):
         outputs = [profile, profile_warning]
         ids = []
         
-        for i in range(3):
+        for i in range(MAX_SIMILAR_MOVIES_TO_SHOW):
             if i < len(filtered_similar):
                 rec_item_id, corr_rate = filtered_similar[i]
                 rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
                 similarity_pct = corr_rate * 100
                 
-                # Determine badge and color (5 tiers)
-                if similarity_pct >= 80:
-                    badge = "🔥 Excellent Match"
-                    color = "#10b981"  # Green
-                elif similarity_pct >= 60:
-                    badge = "✨ Great Match"
-                    color = "#3b82f6"  # Blue
-                elif similarity_pct >= 40:
-                    badge = "👍 Good Match"
-                    color = "#f59e0b"  # Orange
-                elif similarity_pct >= 20:
-                    badge = "👌 Fair Match"
-                    color = "#6b7280"  # Gray
-                else:
-                    badge = "😐 Weak Match"
-                    color = "#9ca3af"  # Light gray
+                # Get badge and color from constants
+                badge, color = get_similarity_badge(similarity_pct)
                 
                 # Create progress bar
                 progress_width = int(similarity_pct)
@@ -431,10 +438,10 @@ def add_similar_movie(movie_id, rating):
     except Exception as e:
         gr.Error(f"❌ Failed to rate movie: {str(e)}")
         outputs = [get_user_profile(), get_profile_warning()]
-        for _ in range(3):
+        for _ in range(MAX_SIMILAR_MOVIES_TO_SHOW):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
-        outputs.extend([None] * 3)
+        outputs.extend([None] * MAX_SIMILAR_MOVIES_TO_SHOW)
         return outputs
 
 def clear_user_profile():
@@ -442,17 +449,17 @@ def clear_user_profile():
     state.user_ratings = {}
     gr.Info("🗑️ Profile cleared successfully")
     outputs = [get_user_profile(), get_profile_warning()]
-    # Hide all 3 movie rows
-    outputs.extend([gr.Row(visible=False)] * 3)
+    # Hide all movie rows
+    outputs.extend([gr.Row(visible=False)] * MAX_SIMILAR_MOVIES_TO_SHOW)
     return outputs
 
 def get_profile_warning():
     """Get dynamic warning message based on number of rated movies"""
     count = len(state.user_ratings)
-    if count >= 5:
+    if count >= MIN_RATED_MOVIES_FOR_RECOMMENDATIONS:
         return f"<p style='color: #10b981; font-weight: 600; margin-bottom: 10px;'>✅ Great! You have {count} rated movies. Ready for recommendations!</p>"
     else:
-        return f"<p style='color: #f59e0b; margin-bottom: 10px;'>⚠️ You need at least 5 rated movies to get personalized recommendations (currently: {count})</p>"
+        return f"<p style='color: #f59e0b; margin-bottom: 10px;'>⚠️ You need at least {MIN_RATED_MOVIES_FOR_RECOMMENDATIONS} rated movies to get personalized recommendations (currently: {count})</p>"
 
 def get_user_profile():
     """Get current user profile as DataFrame"""
@@ -472,73 +479,53 @@ def get_user_profile():
 
 def generate_personalized_recommendations(top_n=10):
     """Generate recommendations based on user's ratings"""
-    if len(state.user_ratings) < 5:
-        gr.Warning(f"⚠️ Please rate at least 5 movies (currently {len(state.user_ratings)})")
-        return pd.DataFrame({"Message": [f"⚠️ Please rate at least 5 movies for better recommendations (currently {len(state.user_ratings)})"]})
+    if len(state.user_ratings) < MIN_RATED_MOVIES_FOR_RECOMMENDATIONS:
+        gr.Warning(f"⚠️ Please rate at least {MIN_RATED_MOVIES_FOR_RECOMMENDATIONS} movies (currently {len(state.user_ratings)})")
+        return pd.DataFrame({"Message": [f"⚠️ Please rate at least {MIN_RATED_MOVIES_FOR_RECOMMENDATIONS} movies for better recommendations (currently {len(state.user_ratings)})"]})
     
+    gr.Info(f"⏳ Generating personalized recommendations from your {len(state.user_ratings)} ratings...")
+    import pandas as pd
     try:
         # Create fake user row
         fake_user_id = -1  # Negative ID for fake user
-        
-        # Create new row with user ratings - ensure it matches matrix structure
         user_row = pd.Series(index=state.user_item_matrix.columns, dtype=float)
         for movie_id, rating in state.user_ratings.items():
             if movie_id in user_row.index:
                 user_row[movie_id] = rating
-        
-        # Add to matrix temporarily - use proper DataFrame creation
         temp_matrix = state.user_item_matrix.copy()
         temp_matrix.loc[fake_user_id] = user_row
-        
-        # Debug: Print fake user row to verify it's correct
-        print(f"\n=== DEBUG: Fake User Info ===")
-        print(f"Total ratings added: {user_row.notna().sum()}")
-        print(f"Rated movie IDs: {user_row[user_row.notna()].index.tolist()}")
-        print(f"Temp matrix shape: {temp_matrix.shape}")
-        print(f"Fake user row in matrix: {temp_matrix.loc[fake_user_id].notna().sum()} non-null values")
-        print("="*50)
-        
-        # Dynamic threshold based on number of ratings
         num_ratings = len(state.user_ratings)
-        if num_ratings <= 7:
-            perc_threshold = 0.3  # 5-7 films: need 30% overlap
-            corr_threshold = 0.0  # No correlation filter - too few data points!
-        elif num_ratings <= 12:
-            perc_threshold = 0.4  # 8-12 films: need 40% overlap
-            corr_threshold = 0.2  # Low correlation threshold
+        if num_ratings <= RATING_COUNT_BREAKPOINTS["low"]:
+            perc_threshold = USER_SIMILARITY_OVERLAP_THRESHOLDS["low"]
+            corr_threshold = USER_CORRELATION_THRESHOLDS["low"]
+        elif num_ratings <= RATING_COUNT_BREAKPOINTS["medium"]:
+            perc_threshold = USER_SIMILARITY_OVERLAP_THRESHOLDS["medium"]
+            corr_threshold = USER_CORRELATION_THRESHOLDS["medium"]
         else:
-            perc_threshold = 0.5  # 13+ films: need 50% overlap
-            corr_threshold = 0.3  # Normal correlation threshold
-        
-        print(f"\n=== DEBUG: Thresholds ==")
-        print(f"Number of ratings: {num_ratings}")
-        print(f"Percentage threshold: {perc_threshold} ({perc_threshold*100}%)")
-        print(f"Correlation threshold: {corr_threshold}")
-        print(f"IMPORTANT: If corr_threshold is NOT 0.0, please restart the app!")
-        print("="*50)
-        
-        # Use existing user_based_recommendation function with dynamic thresholds
-        result_df = user_based_recommendation(
-            temp_matrix, 
-            state.reduced_df, 
+            perc_threshold = USER_SIMILARITY_OVERLAP_THRESHOLDS["high"]
+            corr_threshold = USER_CORRELATION_THRESHOLDS["high"]
+        from src.core.recommender import user_based_recommendation
+        result_df, user_corr_dict = user_based_recommendation(
+            temp_matrix,
+            state.reduced_df,
             fake_user_id,
             perc_threshold_rated_same_products=perc_threshold,
-            corr_threshold=corr_threshold
+            corr_threshold=corr_threshold,
+            return_corrs=True
         )
-        
-        print(f"\n=== DEBUG: Recommendation Result ===")
-        print(f"Result DataFrame shape: {result_df.shape}")
-        print(f"Result DataFrame empty: {result_df.empty}")
-        if not result_df.empty:
-            print(f"Number of similar users found: {result_df.shape[1]}")
-            print(f"Number of recommended items: {result_df.shape[0]}")
-        print("="*50)
-        
         if result_df.empty:
+            gr.Warning("⚠️ No recommendations found. Try rating more diverse movies")
             return pd.DataFrame({"Message": ["No recommendations found. Try rating more diverse movies."]})
-        
-        # Calculate weighted scores and get top recommendations (limit early for performance)
-        weighted_scores = result_df.mean(axis=1).sort_values(ascending=False).head(top_n * 2)  # Get 2x to allow filtering
+        weights = [user_corr_dict.get(uid, 0) if pd.notnull(user_corr_dict.get(uid, 0)) else 0 for uid in result_df.columns]
+        weights = pd.Series(weights, index=result_df.columns)
+        def weighted_avg(row):
+            if weights.sum() > 0:
+                return (row * weights).sum() / weights.sum()
+            else:
+                return 0
+        weighted_scores = result_df.apply(weighted_avg, axis=1).sort_values(ascending=False).head(top_n * 2)
+        print(f"Top 5 weighted scores: {weighted_scores.head().to_dict()}")
+        print("="*50)
         
         # Normalize scores to 0-100 range
         min_score = weighted_scores.min()
@@ -558,30 +545,20 @@ def generate_personalized_recommendations(top_n=10):
             else:
                 similarity_pct = 100
             
-            # Skip recommendations below 20%
-            if similarity_pct < 20:
+            # Skip recommendations below threshold
+            if similarity_pct < MIN_SIMILARITY_THRESHOLD:
                 continue
             
-            # Determine badge and color (5 tiers)
-            if similarity_pct >= 80:
-                badge = "🔥 Excellent Match"
-                color = "#10b981"  # Green
-            elif similarity_pct >= 60:
-                badge = "✨ Great Match"
-                color = "#3b82f6"  # Blue
-            elif similarity_pct >= 40:
-                badge = "👍 Good Match"
-                color = "#f59e0b"  # Orange
-            elif similarity_pct >= 20:
-                badge = "👌 Fair Match"
-                color = "#6b7280"  # Gray
-            else:
-                badge = "😐 Weak Match"
-                color = "#9ca3af"  # Light gray
+            # Get badge from constants
+            badge, _ = get_similarity_badge(similarity_pct)
             
             ids.append(rec_item_id)
             names.append(rec_item_name)
             match_info.append(f"{similarity_pct:.1f}% {badge}")
+        
+        if len(ids) == 0:
+            gr.Warning(f"⚠️ All recommendations were below {MIN_SIMILARITY_THRESHOLD}% match threshold. Try rating more movies")
+            return pd.DataFrame({"Message": [f"All recommendations were below {MIN_SIMILARITY_THRESHOLD}% match threshold. Please rate more diverse movies."]})
         
         gr.Info(f"✨ Generated {len(ids)} personalized recommendations based on your {len(state.user_ratings)} ratings")
         return pd.DataFrame({"ID": ids, "Recommended Movie": names, "Match": match_info})
