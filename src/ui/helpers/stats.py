@@ -12,7 +12,15 @@ def get_system_info(state, USER_RATING_THRESHOLD, ITEM_RATED_THRESHOLD):
     info.append(f"   • Total ratings: {len(state.df):,}")
     info.append(f"   • Unique users: {state.df['user_id'].nunique():,}")
     info.append(f"   • Unique movies: {state.df['item_id'].nunique():,}")
-    info.append(f"   • Date range: {state.df['timestamp'].min()} to {state.df['timestamp'].max()}")
+    from datetime import datetime
+    min_ts = state.df['timestamp'].min()
+    max_ts = state.df['timestamp'].max()
+    try:
+        min_date = datetime.fromtimestamp(float(min_ts)).strftime('%Y-%m-%d')
+        max_date = datetime.fromtimestamp(float(max_ts)).strftime('%Y-%m-%d')
+        info.append(f"   • Date range: {min_date} to {max_date}")
+    except Exception:
+        info.append(f"   • Date range: {min_ts} to {max_ts}")
     info.append(f"\n🔍 After Filtering (threshold: {USER_RATING_THRESHOLD} ratings/user, {ITEM_RATED_THRESHOLD} ratings/movie):")
     info.append(f"   • Filtered ratings: {len(state.reduced_df):,}")
     info.append(f"   • Active users: {state.reduced_df['user_id'].nunique():,}")

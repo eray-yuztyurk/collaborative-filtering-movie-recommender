@@ -26,7 +26,7 @@ from src.core.recommender import (
     user_based_recommendation
 )
 from src.core.cache_manager import save_dumps, load_dumps, dumps_exist
-# Yeni modüller
+# New modules
 from src.ui.helpers.profile_manager import get_user_profile, get_profile_warning, clear_user_profile
 from src.ui.helpers.stats import get_system_info
 
@@ -197,28 +197,36 @@ def get_user_based_recommendations(user_id, top_n):
     gr.Info(f"🔍 Finding recommendations for User {user_id}...")
     try:
         user_id = int(user_id)
-        
         if user_id not in state.user_item_matrix.index:
             gr.Warning(f"⚠️ User ID {user_id} not found in the system")
             return pd.DataFrame({"Error": [f"❌ User ID {user_id} not found."]})
-        
+
         # Get recommendations
         result_df = user_based_recommendation(state.user_item_matrix, state.reduced_df, user_id)
         weighted_scores = result_df.mean(axis=1).sort_values(ascending=False).head(top_n)
-        
-        # Build results
+
+        # For each recommended movie, show the raw (unnormalized) predicted rating as 'X.XX / 5'
         ids = []
         names = []
         scores = []
-        
+        raw_ratings = []
         for rec_item_id, score in weighted_scores.items():
             rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
             ids.append(rec_item_id)
             names.append(rec_item_name)
             scores.append(f"{score:.2f}")
-        
-        gr.Info(f"✅ Generated {len(ids)} recommendations for User {user_id}")
-        return pd.DataFrame({"ID": ids, "Movie Name": names, "Score": scores})
+            # Clamp to [0, 5] for display, but show decimals
+            display_rating = max(0, min(score, 5))
+            raw_ratings.append(f"{display_rating:.2f} / 5")
+
+        df = pd.DataFrame({
+            "ID": ids,
+            "Movie Name": names,
+            "Score": scores,
+            "You would rate this": raw_ratings
+        })
+        gr.Info(f"✅ Generated {len(df)} recommendations for User {user_id}")
+        return df
     
     except ValueError:
         gr.Error("❌ Please enter a valid User ID (number)")
@@ -248,10 +256,10 @@ def add_movie_and_show_similar(movie_id, rating):
     if not movie_id or not rating:
         gr.Warning("⚠️ Please select a movie and rating first")
         outputs = [get_user_profile(state.user_ratings, state.reduced_df), get_profile_warning(state.user_ratings)]
-        for _ in range(3):
+        for _ in range(MAX_SIMILAR_MOVIES_TO_SHOW):
             outputs.append(gr.Row(visible=False))
             outputs.append("")
-        outputs.extend([None] * 3)
+        outputs.extend([None] * MAX_SIMILAR_MOVIES_TO_SHOW)
         return outputs
     
     try:
@@ -262,7 +270,7 @@ def add_movie_and_show_similar(movie_id, rating):
         state.user_ratings[movie_id] = rating
         movie_name = find_item_name_using_id(state.reduced_df, item_id=movie_id)
         
-        # Get similar movies (max 3)
+        # Get similar movies (max from constant)
         selected_item = state.user_item_matrix.loc[:, movie_id]
         correlated_items = state.user_item_matrix.corrwith(selected_item).sort_values(ascending=False)[1:MAX_SIMILAR_MOVIES_TO_SHOW+1]
         
@@ -272,7 +280,7 @@ def add_movie_and_show_similar(movie_id, rating):
         
         outputs = [profile, profile_warning]
         
-        # Fill up to 3 movie slots
+        # Fill up to MAX_SIMILAR_MOVIES_TO_SHOW movie slots
         similar_list = list(correlated_items.items())
         ids = []
         
@@ -474,42 +482,34 @@ def generate_personalized_recommendations(top_n=10):
         weighted_scores = result_df.apply(weighted_avg, axis=1).sort_values(ascending=False).head(top_n * 2)
         print(f"Top 5 weighted scores: {weighted_scores.head().to_dict()}")
         print("="*50)
-        
-        # Normalize scores to 0-100 range
-        min_score = weighted_scores.min()
-        max_score = weighted_scores.max()
-        score_range = max_score - min_score
-        
+
         ids = []
         names = []
         match_info = []
-        
+        raw_ratings = []
         for rec_item_id, score in weighted_scores.items():
             rec_item_name = find_item_name_using_id(state.reduced_df, item_id=rec_item_id)
-            
-            # Normalize to 0-100 scale
-            if score_range > 0:
-                similarity_pct = ((score - min_score) / score_range) * 100
-            else:
-                similarity_pct = 100
-            
-            # Skip recommendations below threshold
-            if similarity_pct < MIN_SIMILARITY_THRESHOLD:
+            # Clamp to [0, 5] for display, no decimals
+            display_rating = max(0, min(score, 5))
+            match_pct = int(round((display_rating / 5) * 100))
+            if match_pct < MIN_SIMILARITY_THRESHOLD:
                 continue
-            
-            # Get badge from constants
-            badge, _ = get_similarity_badge(similarity_pct)
-            
+            badge, _ = get_similarity_badge(match_pct)
             ids.append(rec_item_id)
             names.append(rec_item_name)
-            match_info.append(f"{similarity_pct:.1f}% {badge}")
-        
+            raw_ratings.append(f"{display_rating:.1f} / 5")
+            match_info.append(f"{match_pct} % {badge}")
         if len(ids) == 0:
             gr.Warning(f"⚠️ All recommendations were below {MIN_SIMILARITY_THRESHOLD}% match threshold. Try rating more movies")
             return pd.DataFrame({"Message": [f"All recommendations were below {MIN_SIMILARITY_THRESHOLD}% match threshold. Please rate more diverse movies."]})
-        
-        gr.Info(f"✨ Generated {len(ids)} personalized recommendations based on your {len(state.user_ratings)} ratings")
-        return pd.DataFrame({"ID": ids, "Recommended Movie": names, "Match": match_info})
+        df = pd.DataFrame({
+            "Movie ID": ids,
+            "Movie Title": names,
+            "Your Predicted Rating": raw_ratings,
+            "Match (%)": match_info
+        })
+        gr.Info(f"✨ Generated {len(df)} personalized recommendations based on your {len(state.user_ratings)} ratings")
+        return df
         
     except Exception as e:
         gr.Error(f"❌ Failed to generate recommendations: {str(e)}")

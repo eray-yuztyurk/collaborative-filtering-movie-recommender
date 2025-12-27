@@ -1,8 +1,17 @@
 """
 Recommendation system functions
 """
+
 import pandas as pd
 from surprise import Reader, Dataset, SVD
+import unicodedata
+try:
+    from unidecode import unidecode
+    def normalize_str(s):
+        return unidecode(str(s)).casefold()
+except ImportError:
+    def normalize_str(s):
+        return unicodedata.normalize('NFKD', str(s)).encode('ASCII', 'ignore').decode('utf-8').casefold()
 
 def find_item_name_using_id(dataframe, item_col_name="item_id", item_id=None):
     """Find item name by ID"""
@@ -10,13 +19,21 @@ def find_item_name_using_id(dataframe, item_col_name="item_id", item_id=None):
 
 def find_item_id_using_name(dataframe, item_col_name="item_name", item_name=None):
     """Find item ID by name"""
+    # Use normalized comparison for robust matching
+    norm_target = normalize_str(item_name)
+    for idx, row in dataframe.iterrows():
+        if normalize_str(row[item_col_name]) == norm_target:
+            return row["item_id"]
+    # fallback: try exact match (legacy)
     return dataframe[dataframe[item_col_name] == item_name]["item_id"].values[0]
 
 def search_item_names_with_keyword(dataframe, item_col_name="item_name", searched_item_name=None):
     """Search for items containing a keyword"""
-    item_names = list()
-    [item_names.append(name) for name in dataframe[item_col_name] 
-     if searched_item_name.lower() in name.lower() and name not in item_names]
+    item_names = []
+    norm_keyword = normalize_str(searched_item_name)
+    for name in dataframe[item_col_name]:
+        if norm_keyword in normalize_str(name) and name not in item_names:
+            item_names.append(name)
     return item_names
 
 def create_user_item_matrix(dataframe, index_col="user_id", columns_col="item_id", values_col="rating"):
@@ -46,47 +63,43 @@ def user_based_recommendation(user_item_matrix, dataframe, selected_user_id,
     print(f"\n=== DEBUG: user_based_recommendation START ===")
     print(f"Selected user ID: {selected_user_id}")
     print(f"Thresholds - perc: {perc_threshold_rated_same_products}, corr: {corr_threshold}")
-    umm_for_selected_user = user_item_matrix[user_item_matrix.index == selected_user_id]
-    bool_for_selected_user = umm_for_selected_user.apply(lambda col: col.notnull(), axis=1)
-    item_ids_ratedby_selected_user = bool_for_selected_user.iloc[0].loc[lambda item_id: item_id == True]
-    list_item_ids_ratedby_selected_user = bool_for_selected_user.iloc[0].loc[lambda item_id: item_id == True].index.to_list()
-    print(f"Step 1: User rated {len(list_item_ids_ratedby_selected_user)} items")
-    print(f"Rated item IDs: {list_item_ids_ratedby_selected_user[:10]}...")  # Show first 10
-    allUserIds_and_items_ratedby_selected_user = user_item_matrix.loc[:, list_item_ids_ratedby_selected_user]
-    count_threshold_rated_same_items = len(list_item_ids_ratedby_selected_user) * perc_threshold_rated_same_products
-    print(f"Step 2: Need at least {count_threshold_rated_same_items:.1f} overlapping items")
-    userIds_rated_atleast_X_perc_same_items_with_selected_user = allUserIds_and_items_ratedby_selected_user[
-        allUserIds_and_items_ratedby_selected_user.notnull().sum(axis=1) > count_threshold_rated_same_items]
-    print(f"Step 3: Found {len(userIds_rated_atleast_X_perc_same_items_with_selected_user)} users with enough overlap")
-    if len(userIds_rated_atleast_X_perc_same_items_with_selected_user) == 0:
+    # 1. Filter by movies watched by the selected user (columns)
+    user_vector = user_item_matrix.loc[selected_user_id]
+    rated_items = user_vector[user_vector.notnull()].index.tolist()
+    print(f"Step 1: User rated {len(rated_items)} items")
+    print(f"Rated item IDs: {rated_items[:10]}...")
+    # 2. Find users who watched enough common movies
+    candidate_users = user_item_matrix[rated_items]
+    overlap_counts = candidate_users.notnull().sum(axis=1)
+    count_threshold = len(rated_items) * perc_threshold_rated_same_products
+    candidate_users = candidate_users[overlap_counts > count_threshold]
+    print(f"Step 2: Need at least {count_threshold:.1f} overlapping items")
+    print(f"Step 3: Found {len(candidate_users)} users with enough overlap")
+    if len(candidate_users) == 0:
         print("ERROR: No users found with sufficient overlap!")
         print("="*50)
         return (pd.DataFrame(), {}) if return_corrs else pd.DataFrame()
-    corr_of_userIds_rated_same_items_with_selected_user = userIds_rated_atleast_X_perc_same_items_with_selected_user.T.corr().unstack()
-    userIds_corr_df = pd.DataFrame(corr_of_userIds_rated_same_items_with_selected_user, columns=["corr"])
-    userIds_corr_df.index.names = ["userId_1","userId_2"]
-    userIds_corr_df.reset_index(inplace=True)
+    # 3. Calculate correlation only between the selected user and these users
+    correlations = candidate_users.apply(lambda row: row.corr(user_vector), axis=1)
+    correlations = correlations.drop(index=selected_user_id, errors='ignore')
     if corr_threshold == 0.0:
-        final_users_corr_df = userIds_corr_df[(userIds_corr_df["userId_1"] == selected_user_id) & 
-                                              (userIds_corr_df["userId_2"] != selected_user_id) &
-                                              ((userIds_corr_df["corr"] >= corr_threshold) | (userIds_corr_df["corr"].isna()))].sort_values(by="corr", ascending=False)
+        similar_users = correlations[(correlations >= corr_threshold) | (correlations.isna())].sort_values(ascending=False)
     else:
-        final_users_corr_df = userIds_corr_df[(userIds_corr_df["userId_1"] == selected_user_id) & 
-                                              (userIds_corr_df["userId_2"] != selected_user_id) &
-                                              (userIds_corr_df["corr"] >= corr_threshold)].sort_values(by="corr", ascending=False)
-    print(f"Step 4: After correlation filter (>={corr_threshold}): {len(final_users_corr_df)} similar users")
-    if len(final_users_corr_df) == 0:
+        similar_users = correlations[correlations >= corr_threshold].sort_values(ascending=False)
+    print(f"Step 4: After correlation filter (>={corr_threshold}): {len(similar_users)} similar users")
+    if len(similar_users) == 0:
         print("ERROR: No users found with sufficient correlation!")
         print("="*50)
         return (pd.DataFrame(), {}) if return_corrs else pd.DataFrame()
-    list_users_to_filter = final_users_corr_df["userId_2"].to_list()
-    user_corr_dict = dict(zip(final_users_corr_df["userId_2"], final_users_corr_df["corr"]))
-    final_rec_df = user_item_matrix.loc[list_users_to_filter,:]
+    user_corr_dict = similar_users.to_dict()
+    list_users_to_filter = list(similar_users.index)
+    # 4. Recommend movies watched by these users that the selected user hasn't seen
+    final_rec_df = user_item_matrix.loc[list_users_to_filter, :]
     final_rec_excluded_selected_user_items_df = final_rec_df.T
     final_rec_excluded_selected_user_items_df = final_rec_excluded_selected_user_items_df[
-        ~final_rec_excluded_selected_user_items_df.index.isin(list_item_ids_ratedby_selected_user)]
+        ~final_rec_excluded_selected_user_items_df.index.isin(rated_items)]
     final_rec_excluded_selected_user_items_df = final_rec_excluded_selected_user_items_df.loc[
-        ~final_rec_excluded_selected_user_items_df.apply(lambda row: row.isnull().all(), axis=1),:]
+        ~final_rec_excluded_selected_user_items_df.apply(lambda row: row.isnull().all(), axis=1), :]
     print(f"Step 5: Final recommendations: {final_rec_excluded_selected_user_items_df.shape[0]} items")
     print("="*50)
     if return_corrs:

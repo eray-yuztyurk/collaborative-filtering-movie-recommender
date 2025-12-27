@@ -38,7 +38,23 @@ def create_gradio_app():
         with gr.Tabs():
             # Item-Based Tab
             with gr.Tab("🔍 Item-Based Recommendations"):
-                gr.Markdown("### Discover similar movies based on a movie you love")
+                gr.Markdown("""
+**What is this?**  
+Find movies similar to a movie you already like. The system looks at rating patterns and suggests movies that people who liked your chosen movie also enjoyed.
+
+**When should you use it?**  
+- If you want “more like this” suggestions.  
+- When you have a favorite movie and want to discover similar ones.
+
+**How to use:**  
+1. Search for a movie by name or ID.  
+2. Select your movie from the search results.  
+3. Choose how many recommendations you want.  
+4. Click “Get Recommendations” to see movies similar to your selection.
+
+**Why choose this?**  
+Item-based recommendations are fast and stable. They’re great for finding movies with similar vibes or genres.
+                """)
                 
                 # Step 1: Search
                 gr.Markdown("<div style='background: linear-gradient(90deg, #3b82f6 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
@@ -80,7 +96,23 @@ def create_gradio_app():
             
             # User-Based Tab
             with gr.Tab("👤 User-Based Recommendations"):
-                gr.Markdown("### Build your taste profile, get personalized recommendations")
+                gr.Markdown("""
+**What is this?**  
+Get personalized movie suggestions based on your own taste profile. The system finds users with similar preferences and recommends movies they liked but you haven’t seen yet.
+
+**When should you use it?**  
+- If you want highly personalized recommendations.  
+- When you’re open to discovering new genres or surprises.
+
+**How to use:**  
+1. Search for your favorite movies and rate them (1-5 stars).  
+2. Rate at least 5 movies to build your taste profile.  
+3. Review your rated movies in your profile.  
+4. Click “Get My Recommendations” to see movies tailored to your taste.
+
+**Why choose this?**  
+User-based recommendations are more personal and can introduce you to unexpected favorites. The more movies you rate, the better your suggestions.
+                """)
                 
                 # Step 1: Search for favorite movie
                 gr.Markdown("<div style='background: linear-gradient(90deg, #3b82f6 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
@@ -90,11 +122,10 @@ def create_gradio_app():
                     search_btn_user = gr.Button("🔍 Search", variant="primary", scale=1)
                 
 
-                search_results_user = gr.Radio(label="Search Results", choices=[], interactive=True)
-                
-                gr.Markdown("***Your Rating for selected Movie ??***")
-                with gr.Row():
-                    
+                with gr.Row(visible=False) as search_results_row:
+                    search_results_user = gr.Radio(label="Search Results", choices=[], interactive=True)
+                with gr.Row(visible=False) as rating_row:
+                    gr.Markdown("***Your Rating for selected Movie ??***")
                     rate_btn1 = gr.Button("⭐", size="sm", variant="secondary")
                     rate_btn2 = gr.Button("⭐⭐", size="sm", variant="secondary")
                     rate_btn3 = gr.Button("⭐⭐⭐", size="sm", variant="secondary")
@@ -120,10 +151,12 @@ def create_gradio_app():
                 # Step 3: Your profile
                 gr.Markdown("<div style='background: linear-gradient(90deg, #f59e0b 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
                 gr.Markdown("<h3 style='margin: 10px 0;'>📍 Step 3: Your rated movies</h3>")
-                profile_warning = gr.HTML("<p style='color: #f59e0b; margin-bottom: 10px;'>⚠️ You need at least 5 rated movies to get personalized recommendations</p>")
                 with gr.Row():
                     profile_output = gr.Dataframe(interactive=False, scale=7)
                     clear_btn = gr.Button("🗑️ Clear All", variant="secondary", scale=1, min_width=80)
+
+                # Move warning to Step 2
+                profile_warning = gr.HTML("<p style='color: #f59e0b; margin-bottom: 10px;'>⚠️ You need at least 5 rated movies to get personalized recommendations</p>")
                 
                 # Step 4: Get recommendations
                 gr.Markdown("<div style='background: linear-gradient(90deg, #8b5cf6 0%, transparent 100%); height: 4px; margin: 30px 0 15px 0;'></div>")
@@ -146,9 +179,43 @@ def create_gradio_app():
                     similar_outputs.append(state_id)
                 
                 # Event handlers
+                # Show search results after search
+                def show_search_results(*args):
+                    return gr.update(visible=True)
                 search_btn_user.click(fn=search_movies, inputs=search_input_user, outputs=search_results_user)
+                search_btn_user.click(fn=show_search_results, inputs=[], outputs=[search_results_row])
+
+                # Show rating section only when a movie is selected in radio
+                def show_rating_section(selected):
+                    return gr.update(visible=bool(selected))
+                search_results_user.change(fn=show_rating_section, inputs=search_results_user, outputs=rating_row)
                 
-                # Connect initial rating buttons
+                # Track selected rating
+                selected_rating = gr.State(None)
+                def set_selected_rating(rating):
+                    return rating
+                rate_btn1.click(fn=set_selected_rating, inputs=[], outputs=selected_rating)
+                rate_btn2.click(fn=set_selected_rating, inputs=[], outputs=selected_rating)
+                rate_btn3.click(fn=set_selected_rating, inputs=[], outputs=selected_rating)
+                rate_btn4.click(fn=set_selected_rating, inputs=[], outputs=selected_rating)
+                rate_btn5.click(fn=set_selected_rating, inputs=[], outputs=selected_rating)
+
+                # Update button styles based on selected rating
+                def update_rating_buttons(rating):
+                    return (
+                        gr.update(variant="primary" if rating==1 else "secondary"),
+                        gr.update(variant="primary" if rating==2 else "secondary"),
+                        gr.update(variant="primary" if rating==3 else "secondary"),
+                        gr.update(variant="primary" if rating==4 else "secondary"),
+                        gr.update(variant="primary" if rating==5 else "secondary"),
+                    )
+                rate_btn1.click(fn=update_rating_buttons, inputs=[gr.Number(value=1)], outputs=[rate_btn1, rate_btn2, rate_btn3, rate_btn4, rate_btn5])
+                rate_btn2.click(fn=update_rating_buttons, inputs=[gr.Number(value=2)], outputs=[rate_btn1, rate_btn2, rate_btn3, rate_btn4, rate_btn5])
+                rate_btn3.click(fn=update_rating_buttons, inputs=[gr.Number(value=3)], outputs=[rate_btn1, rate_btn2, rate_btn3, rate_btn4, rate_btn5])
+                rate_btn4.click(fn=update_rating_buttons, inputs=[gr.Number(value=4)], outputs=[rate_btn1, rate_btn2, rate_btn3, rate_btn4, rate_btn5])
+                rate_btn5.click(fn=update_rating_buttons, inputs=[gr.Number(value=5)], outputs=[rate_btn1, rate_btn2, rate_btn3, rate_btn4, rate_btn5])
+
+                # Connect rating logic to recommendation
                 rate_btn1.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=1, visible=False)], outputs=similar_outputs)
                 rate_btn2.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=2, visible=False)], outputs=similar_outputs)
                 rate_btn3.click(fn=add_movie_and_show_similar, inputs=[search_results_user, gr.Number(value=3, visible=False)], outputs=similar_outputs)
@@ -167,7 +234,17 @@ def create_gradio_app():
             
             # Stats & Info Tab
             with gr.Tab("📊 System Stats & Info"):
-                gr.Markdown("### View detailed information about the dataset and recommendation system")
+                gr.Markdown("""
+**What is this?**  
+View technical details about the dataset and how the recommendation system works.
+
+**When should you use it?**  
+- If you’re curious about the data or system performance.  
+- For transparency and understanding how recommendations are generated.
+
+**How to use:**  
+- Click “Refresh System Info” to see up-to-date stats and system details.
+                """)
                 
                 gr.Markdown("<div style='background: linear-gradient(90deg, #8b5cf6 0%, transparent 100%); height: 3px; margin: 25px 0 15px 0;'></div>")
                 gr.Markdown("<h3 style='margin: 10px 0;'>📊 Dataset Statistics & System Information</h3>")
